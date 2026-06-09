@@ -11,6 +11,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <style>
 :root {
   --rose: #C97B9A;
@@ -307,93 +309,174 @@ body { font-family: 'Inter', sans-serif; background: var(--sand); color: var(--i
 <script>const ACREEDORA = 'Yaretzi Dalet Gutiérrez Castañeda';
 const APP_NAME = 'Varito';
 const INTERES_DEFAULT = 30;
-const PENALIZACION_DIARIA = 10; // % sobre monto original por día de atraso
+const PENALIZACION_DIARIA = 10;
 
+// ── Firebase ──────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyCDYns_aIfO87mtln-ORna-9sL_7Xm1IBk",
+  authDomain: "varito-46d22.firebaseapp.com",
+  projectId: "varito-46d22",
+  storageBucket: "varito-46d22.firebasestorage.app",
+  messagingSenderId: "228917831433",
+  appId: "1:228917831433:web:8487695ba7d8c44d5e95d8"
+};
+
+// Load Firebase from CDN (loaded in HTML before this script)
+let db = null;
+let fbReady = false;
+const fbCallbacks = [];
+
+function onFbReady(fn) {
+  if (fbReady) fn();
+  else fbCallbacks.push(fn);
+}
+
+function initFirebase() {
+  try {
+    const app = firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    fbReady = true;
+    fbCallbacks.forEach(fn => fn());
+    console.log('Firebase conectado');
+  } catch (e) {
+    console.error('Firebase error:', e);
+  }
+}
+
+// ── Store ─────────────────────────────────────────────────
 const Store = (() => {
-  const KEYS = { clientes: 'vr_clientes', prestamos: 'vr_prestamos', pagos: 'vr_pagos' };
+  // In-memory cache
+  let state = { clientes: [], prestamos: [], pagos: [] };
+  let loaded = false;
+  const listeners = [];
 
-  const sampleClientes = [];
+  const notify = () => listeners.forEach(fn => fn());
 
-  const today = new Date();
-  const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r.toISOString().split('T')[0]; };
-  const sub = (n) => addDays(today, -n);
+  const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-  const samplePrestamos = [];
-
-  const samplePagos = [];
-
-  const load = (key, fallback) => { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fallback; } catch { return fallback; } };
-  const save = (key, data) => { try { localStorage.setItem(key, JSON.stringify(data)); } catch {} };
-
-  let state = {
-    clientes: load(KEYS.clientes, sampleClientes),
-    prestamos: load(KEYS.prestamos, samplePrestamos),
-    pagos: load(KEYS.pagos, samplePagos),
+  // ── Load all data from Firestore ──
+  const loadAll = async () => {
+    if (!db) return;
+    try {
+      const [cSnap, pSnap, pgSnap] = await Promise.all([
+        db.collection('clientes').orderBy('createdAt', 'desc').get(),
+        db.collection('prestamos').get(),
+        db.collection('pagos').get(),
+      ]);
+      state.clientes  = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.prestamos = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.pagos     = pgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      loaded = true;
+      notify();
+    } catch (e) {
+      console.error('Error cargando datos:', e);
+    }
   };
 
-  const persist = () => { save(KEYS.clientes, state.clientes); save(KEYS.prestamos, state.prestamos); save(KEYS.pagos, state.pagos); };
-  const genId = (prefix) => prefix + Date.now() + Math.random().toString(36).slice(2, 6);
+  // ── Subscribe to real-time updates ──
+  const subscribeAll = () => {
+    if (!db) return;
+    db.collection('clientes').orderBy('createdAt','desc').onSnapshot(snap => {
+      state.clientes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      notify();
+    });
+    db.collection('prestamos').onSnapshot(snap => {
+      state.prestamos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      notify();
+    });
+    db.collection('pagos').onSnapshot(snap => {
+      state.pagos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      notify();
+    });
+  };
 
   return {
     ACREEDORA, APP_NAME, INTERES_DEFAULT, PENALIZACION_DIARIA,
 
-    getClientes: () => [...state.clientes],
+    // Subscribe to state changes (re-render trigger)
+    subscribe: (fn) => { listeners.push(fn); },
+
+    isLoaded: () => loaded,
+
+    init: () => {
+      onFbReady(() => {
+        subscribeAll();
+        loadAll();
+      });
+    },
+
+    getClientes:  () => [...state.clientes],
     getPrestamos: () => [...state.prestamos],
-    getPagos: () => [...state.pagos],
-    getCliente: (id) => state.clientes.find(c => c.id === id),
-    getPrestamo: (id) => state.prestamos.find(p => p.id === id),
-    getPagosByPrestamo: (pid) => state.pagos.filter(p => p.prestamoId === pid).sort((a, b) => new Date(a.fecha) - new Date(b.fecha)),
-    getPrestamosByCliente: (cid) => state.prestamos.filter(p => p.clienteId === cid),
+    getPagos:     () => [...state.pagos],
 
-    getDomicilioCompleto: (c) => {
-      const parts = [c.calle, c.numExt ? `#${c.numExt}` : '', c.numInt ? `Int. ${c.numInt}` : '', c.colonia, c.cp, c.ciudad].filter(Boolean);
-      return parts.join(', ');
+    getCliente:   (id) => state.clientes.find(c => c.id === id),
+    getPrestamo:  (id) => state.prestamos.find(p => p.id === id),
+
+    getPagosByPrestamo: (pid) =>
+      state.pagos.filter(p => p.prestamoId === pid)
+        .sort((a, b) => new Date(a.fecha) - new Date(b.fecha)),
+
+    getPrestamosByCliente: (cid) =>
+      state.prestamos.filter(p => p.clienteId === cid),
+
+    getDomicilioCompleto: (c) =>
+      [c.calle, c.numExt ? `#${c.numExt}` : '', c.numInt ? `Int. ${c.numInt}` : '',
+       c.colonia, c.cp, c.ciudad].filter(Boolean).join(', '),
+
+    // ── CRUD ──
+    addCliente: async (data) => {
+      const doc = { ...data, createdAt: new Date().toISOString().split('T')[0] };
+      const ref = await db.collection('clientes').add(doc);
+      return { id: ref.id, ...doc };
     },
 
-    addCliente: (data) => {
-      const c = { ...data, id: genId('c'), createdAt: new Date().toISOString().split('T')[0] };
-      state.clientes.unshift(c); persist(); return c;
-    },
-    updateCliente: (id, data) => {
-      state.clientes = state.clientes.map(c => c.id === id ? { ...c, ...data } : c);
-      persist();
+    updateCliente: async (id, data) => {
+      await db.collection('clientes').doc(id).update(data);
     },
 
-    deleteCliente: (id) => {
-      const prestamosCliente = state.prestamos.filter(p => p.clienteId === id).map(p => p.id);
-      state.pagos = state.pagos.filter(pg => !prestamosCliente.includes(pg.prestamoId));
-      state.prestamos = state.prestamos.filter(p => p.clienteId !== id);
-      state.clientes = state.clientes.filter(c => c.id !== id);
-      persist();
+    deleteCliente: async (id) => {
+      const batch = db.batch();
+      const ps = state.prestamos.filter(p => p.clienteId === id);
+      for (const p of ps) {
+        const pgs = state.pagos.filter(pg => pg.prestamoId === p.id);
+        pgs.forEach(pg => batch.delete(db.collection('pagos').doc(pg.id)));
+        batch.delete(db.collection('prestamos').doc(p.id));
+      }
+      batch.delete(db.collection('clientes').doc(id));
+      await batch.commit();
     },
 
-    addPrestamo: (data) => {
-      const folioNum = (state.prestamos.length > 0 ? Math.max(...state.prestamos.map(p => p.folioNum || 0)) : 0) + 1;
-      const p = { ...data, id: genId('p'), estado: 'activo', folioNum };
-      state.prestamos.unshift(p); persist(); return p;
+    addPrestamo: async (data) => {
+      const folioNum = state.prestamos.length > 0
+        ? Math.max(...state.prestamos.map(p => p.folioNum || 0)) + 1 : 1;
+      const doc = { ...data, estado: 'activo', folioNum };
+      const ref = await db.collection('prestamos').add(doc);
+      return { id: ref.id, ...doc };
     },
 
-    addPago: (data) => {
-      const pg = { ...data, id: genId('pg') };
-      state.pagos.push(pg);
+    addPago: async (data) => {
+      const ref = await db.collection('pagos').add(data);
       const prestamo = state.prestamos.find(p => p.id === data.prestamoId);
       if (prestamo) {
-        const pagosHechos = state.pagos.filter(p => p.prestamoId === data.prestamoId).length;
-        if (pagosHechos >= prestamo.plazo) {
-          state.prestamos = state.prestamos.map(p => p.id === data.prestamoId ? { ...p, estado: 'liquidado' } : p);
+        const count = state.pagos.filter(p => p.prestamoId === data.prestamoId).length + 1;
+        if (count >= prestamo.plazo) {
+          await db.collection('prestamos').doc(data.prestamoId).update({ estado: 'liquidado' });
         }
       }
-      persist(); return pg;
+      return { id: ref.id, ...data };
     },
 
     getSaldoRestante: (prestamoId) => {
       const p = state.prestamos.find(pr => pr.id === prestamoId);
       if (!p) return 0;
-      const pagado = state.pagos.filter(pg => pg.prestamoId === prestamoId).reduce((s, pg) => s + pg.monto, 0);
+      const pagado = state.pagos
+        .filter(pg => pg.prestamoId === prestamoId)
+        .reduce((s, pg) => s + pg.monto, 0);
       return Math.max(0, p.totalConInteres - pagado);
     },
 
-    getPagosCount: (prestamoId) => state.pagos.filter(pg => pg.prestamoId === prestamoId).length,
+    getPagosCount: (prestamoId) =>
+      state.pagos.filter(pg => pg.prestamoId === prestamoId).length,
 
     getPenalizacion: (prestamo, cuota) => {
       if (cuota.estado !== 'vencido') return 0;
@@ -403,25 +486,36 @@ const Store = (() => {
 
     getStats: () => {
       const activos = state.prestamos.filter(p => p.estado === 'activo');
-      const cartera = activos.reduce((s, p) => s + state.pagos.filter(pg => pg.prestamoId === p.id).reduce((a, pg) => a - pg.monto, p.totalConInteres), 0);
+      const cartera = activos.reduce((s, p) => {
+        const pagado = state.pagos
+          .filter(pg => pg.prestamoId === p.id)
+          .reduce((a, pg) => a + pg.monto, 0);
+        return s + Math.max(0, p.totalConInteres - pagado);
+      }, 0);
       const hoy = new Date().toISOString().split('T')[0];
-      const pagosHoy = state.pagos.filter(pg => pg.fecha === hoy).reduce((s, pg) => s + pg.monto, 0);
-      return { cartera: Math.max(0, cartera), activos: activos.length, pagosHoy, liquidados: state.prestamos.filter(p => p.estado === 'liquidado').length };
+      const pagosHoy = state.pagos
+        .filter(pg => pg.fecha === hoy)
+        .reduce((s, pg) => s + pg.monto, 0);
+      return {
+        cartera,
+        activos: activos.length,
+        pagosHoy,
+        liquidados: state.prestamos.filter(p => p.estado === 'liquidado').length
+      };
     },
 
     getTableraAmortizacion: (prestamo) => {
       const cuotas = [];
       let saldo = prestamo.totalConInteres;
-      const freq = { 'semanal': 7, 'quincenal': 15, 'mensual': 30 };
-      const dias = freq[prestamo.frecuencia] || 15;
+      const freq = { semanal: 7, quincenal: 15, mensual: 30 }[prestamo.frecuencia] || 15;
       const pagosHechos = state.pagos.filter(pg => pg.prestamoId === prestamo.id);
+      const hoy = new Date().toISOString().split('T')[0];
       for (let i = 1; i <= prestamo.plazo; i++) {
         const fecha = new Date(prestamo.fechaInicio + 'T00:00:00');
-        fecha.setDate(fecha.getDate() + dias * i);
+        fecha.setDate(fecha.getDate() + freq * i);
         const fechaStr = fecha.toISOString().split('T')[0];
         const pagoHecho = pagosHechos.find(pg => pg.numCuota === i);
-        saldo = Math.max(0, saldo - prestamo.pagoCuota);
-        const hoy = new Date().toISOString().split('T')[0];
+        saldo = Math.max(0, Math.round((saldo - prestamo.pagoCuota) * 100) / 100);
         let estado = 'pendiente';
         if (pagoHecho) estado = 'pagado';
         else if (fechaStr < hoy) estado = 'vencido';
@@ -1095,14 +1189,14 @@ const Modal = {
         </div>
       </div>
     `;
-    el.querySelector('#delete-cliente-btn').addEventListener('click', () => {
+    el.querySelector('#delete-cliente-btn').addEventListener('click', async () => {
       const ps = Store.getPrestamosByCliente(clienteId);
       const activos = ps.filter(p => p.estado === 'activo').length;
       const msg = activos > 0
         ? \`Este cliente tiene \${activos} préstamo(s) activo(s). Se eliminarán también todos sus préstamos y pagos. ¿Continuar?\`
         : '¿Eliminar este cliente y todos sus registros? Esta acción no se puede deshacer.';
       if (!window.confirm(msg)) return;
-      Store.deleteCliente(clienteId);
+      await Store.deleteCliente(clienteId);
       Toast.success('Cliente eliminado');
       App.navigate('clientes');
     });
@@ -1246,7 +1340,7 @@ const Modal = {
     setupPhoto('file-ine','zone-ine','prev-ine','img-ine','rm-ine', () => ineUrl, (v) => ineUrl = v);
     setupPhoto('file-dom','zone-dom','prev-dom','img-dom','rm-dom', () => domUrl, (v) => domUrl = v);
 
-    el.querySelector('#save-btn').addEventListener('click', () => {
+    el.querySelector('#save-btn').addEventListener('click', async () => {
       const nombre = el.querySelector('#nombre').value.trim();
       const telefono = el.querySelector('#telefono').value.trim();
       const calle = el.querySelector('#calle').value.trim();
@@ -1272,11 +1366,11 @@ const Modal = {
       };
 
       if (editing) {
-        Store.updateCliente(clienteId, data);
+        await Store.updateCliente(clienteId, data);
         Toast.success('Cliente actualizado');
         App.navigate('clienteDetalle', clienteId);
       } else {
-        const c = Store.addCliente(data);
+        const c = await Store.addCliente(data);
         Toast.success('Cliente registrado');
         App.navigate('clienteDetalle', c.id);
       }
@@ -1420,7 +1514,7 @@ const Modal = {
 
     if (preClienteId) setTimeout(updateCalc, 50);
 
-    el.querySelector('#save-btn').addEventListener('click', () => {
+    el.querySelector('#save-btn').addEventListener('click', async () => {
       const clienteId = el.querySelector('#cliente-sel').value;
       const monto = parseFloat(el.querySelector('#monto').value);
       const interes = parseFloat(el.querySelector('#interes').value) || 0;
@@ -1429,7 +1523,7 @@ const Modal = {
       const fechaInicio = el.querySelector('#fechaInicio').value;
       if (!clienteId || !monto || !plazo) { Toast.error('Completa los campos obligatorios'); return; }
       const { total, cuota } = Store.calcPrestamo(monto, interes, plazo);
-      Store.addPrestamo({ clienteId, monto, interes, plazo, frecuencia, fechaInicio, totalConInteres: total, pagoCuota: cuota });
+      await Store.addPrestamo({ clienteId, monto, interes, plazo, frecuencia, fechaInicio, totalConInteres: total, pagoCuota: cuota });
       Toast.success('Préstamo registrado');
       App.navigate('clienteDetalle', clienteId);
     });
@@ -1572,13 +1666,13 @@ const Modal = {
       notifBtn.classList.toggle('on', notifWhatsApp);
     });
 
-    el.querySelector('#save-btn').addEventListener('click', () => {
+    el.querySelector('#save-btn').addEventListener('click', async () => {
       const fecha = el.querySelector('#fecha').value;
       const folio = el.querySelector('#folio').value.trim();
       const nota = el.querySelector('#nota').value.trim();
       if (!fecha) { Toast.error('Selecciona la fecha del pago'); return; }
 
-      const pago = Store.addPago({ prestamoId, monto: prestamo.pagoCuota, fecha, metodo, folio, nota, comprobanteUrl: comprobanteDataUrl, numCuota });
+      const pago = await Store.addPago({ prestamoId, monto: prestamo.pagoCuota, fecha, metodo, folio, nota, comprobanteUrl: comprobanteDataUrl, numCuota });
       const nuevoSaldo = Store.getSaldoRestante(prestamoId);
 
       Toast.success('Pago registrado correctamente');
@@ -1863,24 +1957,45 @@ _Varito — Servicios de crédito personal · Varito_`;
   },
 
   renderView() {
-    const shell = document.getElementById('shell');
     const viewEl = document.getElementById('view');
     const tabBar = document.getElementById('tab-bar');
     viewEl.innerHTML = '';
+
+    // Show loading if Firebase not ready yet
+    if (!Store.isLoaded() && ['dashboard','clientes','reportes'].includes(this.route)) {
+      viewEl.innerHTML = `
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:40px;min-height:60vh">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="22" fill="#E8A020" stroke="#B87A10" stroke-width="2"/>
+            <circle cx="24" cy="24" r="17" fill="#F5C040" stroke="#D49010" stroke-width="1"/>
+            <ellipse cx="19" cy="21" rx="2.5" ry="3" fill="#6B3A00"/>
+            <ellipse cx="29" cy="21" rx="2.5" ry="3" fill="#6B3A00"/>
+            <circle cx="20" cy="20" r="0.9" fill="white"/>
+            <circle cx="30" cy="20" r="0.9" fill="white"/>
+            <path d="M18 28 Q24 34 30 28" stroke="#6B3A00" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+            <ellipse cx="15" cy="27" rx="3" ry="1.5" fill="#E8724A" opacity="0.45"/>
+            <ellipse cx="33" cy="27" rx="3" ry="1.5" fill="#E8724A" opacity="0.45"/>
+          </svg>
+          <div style="font-size:15px;font-weight:500;color:var(--ink-mid)">Conectando con Varito...</div>
+          <div style="font-size:12px;color:var(--ink-soft)">Cargando tus datos</div>
+        </div>`;
+      tabBar.style.display = 'none';
+      return;
+    }
 
     const noTabRoutes = ['nuevoCliente','editarCliente','nuevoPrestamo','registrarPago','verTabla'];
     tabBar.style.display = noTabRoutes.includes(this.route) ? 'none' : 'flex';
 
     const views = {
-      dashboard: () => Dashboard.render(),
-      clientes: () => Clientes.render(),
+      dashboard:      () => Dashboard.render(),
+      clientes:       () => Clientes.render(),
       clienteDetalle: () => ClienteDetalle.render(this.param),
-      nuevoCliente: () => NuevoCliente.render(null),
-      editarCliente: () => NuevoCliente.render(this.param),
-      nuevoPrestamo: () => NuevoPrestamo.render(this.param),
-      registrarPago: () => RegistrarPago.render(this.param),
-      verTabla: () => Documentos.render(this.param),
-      reportes: () => Reportes.render(),
+      nuevoCliente:   () => NuevoCliente.render(null),
+      editarCliente:  () => NuevoCliente.render(this.param),
+      nuevoPrestamo:  () => NuevoPrestamo.render(this.param),
+      registrarPago:  () => RegistrarPago.render(this.param),
+      verTabla:       () => Documentos.render(this.param),
+      reportes:       () => Reportes.render(),
     };
 
     const renderFn = views[this.route];
@@ -1890,7 +2005,8 @@ _Varito — Servicios de crédito personal · Varito_`;
     }
 
     const tabMap = { dashboard: 0, clientes: 1, reportes: 3 };
-    document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === (tabMap[this.route] ?? -1)));
+    document.querySelectorAll('.tab').forEach((t, i) =>
+      t.classList.toggle('active', i === (tabMap[this.route] ?? -1)));
   },
 
   init() {
@@ -1929,11 +2045,18 @@ _Varito — Servicios de crédito personal · Varito_`;
     shell.appendChild(tabBar);
     document.getElementById('app').appendChild(shell);
 
+    // Subscribe to Firebase data changes → re-render
+    Store.subscribe(() => App.renderView());
+    Store.init();
+
     this.renderView();
   }
 };
 
-document.addEventListener('DOMContentLoaded', () => App.init());
+document.addEventListener('DOMContentLoaded', () => {
+  initFirebase();
+  App.init();
+});
 </script>
 </body>
 </html>

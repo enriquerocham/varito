@@ -294,55 +294,15 @@ const PENALIZACION_DIARIA = 10; // % sobre monto original por día de atraso
 const Store = (() => {
   const KEYS = { clientes: 'vr_clientes', prestamos: 'vr_prestamos', pagos: 'vr_pagos' };
 
-  const sampleClientes = [
-    {
-      id: 'c1', nombre: 'Laura González Pérez', telefono: '8112345678',
-      calle: 'Calle Roble', numExt: '12', numInt: '', colonia: 'Col. Centro',
-      cp: '66000', ciudad: 'García, N.L.',
-      ine: 'GOPL850412MNLNRR04', fotoIneUrl: null, fotoDomicilioUrl: null,
-      refNombre: 'María Pérez', refParentesco: 'Hermana', refTelefono: '8119876543', refDireccion: '',
-      createdAt: '2025-04-10'
-    },
-    {
-      id: 'c2', nombre: 'Rosa Mendoza Ríos', telefono: '8123456789',
-      calle: 'Av. Cedro', numExt: '45', numInt: '2', colonia: 'Col. Las Flores',
-      cp: '66050', ciudad: 'Escobedo, N.L.',
-      ine: 'MENR870305MNLDZS08', fotoIneUrl: null, fotoDomicilioUrl: null,
-      refNombre: 'Juan Mendoza', refParentesco: 'Esposo', refTelefono: '8134567890', refDireccion: '',
-      createdAt: '2025-03-15'
-    },
-    {
-      id: 'c3', nombre: 'Carmen Torres Valdez', telefono: '8134567890',
-      calle: 'Privada Olmo', numExt: '8', numInt: '', colonia: 'Col. Jardines',
-      cp: '66600', ciudad: 'Apodaca, N.L.',
-      ine: 'TOVC900118MNLRLR02', fotoIneUrl: null, fotoDomicilioUrl: null,
-      refNombre: 'Ana Torres', refParentesco: 'Madre', refTelefono: '8145678901', refDireccion: '',
-      createdAt: '2025-02-20'
-    },
-  ];
+  const sampleClientes = [];
 
   const today = new Date();
   const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r.toISOString().split('T')[0]; };
   const sub = (n) => addDays(today, -n);
 
-  const samplePrestamos = [
-    { id: 'p1', clienteId: 'c1', monto: 5000, interes: 30, plazo: 8, frecuencia: 'semanal', fechaInicio: sub(42), estado: 'activo', pagoCuota: 812.50, totalConInteres: 6500, folioNum: 39 },
-    { id: 'p2', clienteId: 'c2', monto: 7000, interes: 30, plazo: 8, frecuencia: 'quincenal', fechaInicio: sub(60), estado: 'activo', pagoCuota: 1137.50, totalConInteres: 9100, folioNum: 40 },
-    { id: 'p3', clienteId: 'c3', monto: 3000, interes: 30, plazo: 6, frecuencia: 'semanal', fechaInicio: sub(50), estado: 'activo', pagoCuota: 650, totalConInteres: 3900, folioNum: 41 },
-  ];
+  const samplePrestamos = [];
 
-  const samplePagos = [
-    { id: 'pg1', prestamoId: 'p1', monto: 812.50, fecha: sub(35), metodo: 'transferencia', folio: 'TRF20250505001', nota: '', comprobanteUrl: null, numCuota: 1 },
-    { id: 'pg2', prestamoId: 'p1', monto: 812.50, fecha: sub(28), metodo: 'transferencia', folio: 'TRF20250512002', nota: '', comprobanteUrl: null, numCuota: 2 },
-    { id: 'pg3', prestamoId: 'p1', monto: 812.50, fecha: sub(21), metodo: 'efectivo', folio: '', nota: 'En mano', comprobanteUrl: null, numCuota: 3 },
-    { id: 'pg4', prestamoId: 'p1', monto: 812.50, fecha: sub(14), metodo: 'transferencia', folio: 'TRF20250526003', nota: '', comprobanteUrl: null, numCuota: 4 },
-    { id: 'pg5', prestamoId: 'p1', monto: 812.50, fecha: sub(7), metodo: 'efectivo', folio: '', nota: '', comprobanteUrl: null, numCuota: 5 },
-    { id: 'pg6', prestamoId: 'p2', monto: 1137.50, fecha: sub(45), metodo: 'transferencia', folio: 'TRF20250425001', nota: '', comprobanteUrl: null, numCuota: 1 },
-    { id: 'pg7', prestamoId: 'p2', monto: 1137.50, fecha: sub(30), metodo: 'transferencia', folio: 'TRF20250510002', nota: '', comprobanteUrl: null, numCuota: 2 },
-    { id: 'pg8', prestamoId: 'p2', monto: 1137.50, fecha: sub(15), metodo: 'efectivo', folio: '', nota: '', comprobanteUrl: null, numCuota: 3 },
-    { id: 'pg9', prestamoId: 'p3', monto: 650, fecha: sub(43), metodo: 'efectivo', folio: '', nota: '', comprobanteUrl: null, numCuota: 1 },
-    { id: 'pg10', prestamoId: 'p3', monto: 650, fecha: sub(36), metodo: 'transferencia', folio: 'TRF20250504001', nota: '', comprobanteUrl: null, numCuota: 2 },
-  ];
+  const samplePagos = [];
 
   const load = (key, fallback) => { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fallback; } catch { return fallback; } };
   const save = (key, data) => { try { localStorage.setItem(key, JSON.stringify(data)); } catch {} };
@@ -378,6 +338,14 @@ const Store = (() => {
     },
     updateCliente: (id, data) => {
       state.clientes = state.clientes.map(c => c.id === id ? { ...c, ...data } : c);
+      persist();
+    },
+
+    deleteCliente: (id) => {
+      const prestamosCliente = state.prestamos.filter(p => p.clienteId === id).map(p => p.id);
+      state.pagos = state.pagos.filter(pg => !prestamosCliente.includes(pg.prestamoId));
+      state.prestamos = state.prestamos.filter(p => p.clienteId !== id);
+      state.clientes = state.clientes.filter(c => c.id !== id);
       persist();
     },
 
@@ -870,8 +838,8 @@ const Modal = {
           ${clientesFiltrados.length === 0 ? `
             <div class="empty-state">
               <i class="ti ti-users"></i>
-              <h3>Sin clientes activos</h3>
-              <p>Agrega tu primer cliente para comenzar</p>
+              <h3>¡Todo listo, Yaretzi!</h3>
+              <p>Toca "Nuevo cliente" para registrar tu primer cliente y comenzar.</p>
             </div>
           ` : clientesFiltrados.slice(0, 5).map(c => {
             const ps = Store.getPrestamosByCliente(c.id).filter(p => p.estado === 'activo');
@@ -1021,7 +989,10 @@ const Modal = {
       <div class="scroll-area" style="padding-bottom:16px">
         <div class="section-title">
           Datos del cliente
-          <a onclick="App.navigate('editarCliente','${clienteId}')"><i class="ti ti-edit" style="font-size:13px"></i> Editar</a>
+          <div style="display:flex;gap:8px">
+            <a onclick="App.navigate('editarCliente','${clienteId}')"><i class="ti ti-edit" style="font-size:13px"></i> Editar</a>
+            <a id="delete-cliente-btn" style="color:var(--danger);cursor:pointer"><i class="ti ti-trash" style="font-size:13px"></i> Eliminar</a>
+          </div>
         </div>
         <div style="padding:0 16px;display:flex;flex-direction:column;gap:6px">
           <div class="info-box"><i class="ti ti-map-pin"></i><span>${Store.getDomicilioCompleto(cliente)}</span></div>
@@ -1106,6 +1077,18 @@ const Modal = {
         </div>
       </div>
     `;
+    el.querySelector('#delete-cliente-btn').addEventListener('click', () => {
+      const ps = Store.getPrestamosByCliente(clienteId);
+      const activos = ps.filter(p => p.estado === 'activo').length;
+      const msg = activos > 0
+        ? \`Este cliente tiene \${activos} préstamo(s) activo(s). Se eliminarán también todos sus préstamos y pagos. ¿Continuar?\`
+        : '¿Eliminar este cliente y todos sus registros? Esta acción no se puede deshacer.';
+      if (!window.confirm(msg)) return;
+      Store.deleteCliente(clienteId);
+      Toast.success('Cliente eliminado');
+      App.navigate('clientes');
+    });
+
     return el;
   }
 };

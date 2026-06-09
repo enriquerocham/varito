@@ -1069,138 +1069,184 @@ const Modal = {
     const activos = prestamos.filter(p => p.estado === 'activo');
     const saldoTotal = activos.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0);
     const pagosTotal = prestamos.reduce((s, p) => s + Store.getPagosCount(p.id), 0);
+    const domicilio = Store.getDomicilioCompleto(cliente);
 
     const el = document.createElement('div');
-    el.innerHTML = `
-      <div class="page-header">
-        <button class="back-btn" onclick="App.navigate('clientes')"><i class="ti ti-arrow-left"></i></button>
-        <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
-          <div class="c-avatar ${Fmt.avatarColor(cliente.nombre)}" style="width:50px;height:50px;font-size:16px">${Fmt.initials(cliente.nombre)}</div>
-          <div>
-            <h1>${cliente.nombre}</h1>
-            <p><i class="ti ti-phone" style="font-size:11px"></i> ${cliente.telefono}</p>
-          </div>
+
+    // ── Header ──
+    const header = document.createElement('div');
+    header.className = 'page-header';
+    header.innerHTML = `
+      <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+        <div class="c-avatar ${Fmt.avatarColor(cliente.nombre)}" style="width:50px;height:50px;font-size:16px">${Fmt.initials(cliente.nombre)}</div>
+        <div>
+          <h1>${cliente.nombre}</h1>
+          <p><i class="ti ti-phone" style="font-size:11px"></i> ${cliente.telefono}</p>
+        </div>
+      </div>`;
+    el.appendChild(header);
+    el.querySelector('#back-btn').onclick = () => App.navigate('clientes');
+
+    // ── Stats ──
+    const stats = document.createElement('div');
+    stats.className = 'stats-row';
+    stats.innerHTML = `
+      <div class="stat-card"><div class="stat-val">${Fmt.currency(saldoTotal)}</div><div class="stat-lbl">Saldo total</div></div>
+      <div class="stat-card"><div class="stat-val">${activos.length}</div><div class="stat-lbl">Activos</div></div>
+      <div class="stat-card"><div class="stat-val">${pagosTotal}</div><div class="stat-lbl">Pagos hechos</div></div>`;
+    el.appendChild(stats);
+
+    // ── Scroll body ──
+    const body = document.createElement('div');
+    body.className = 'scroll-area';
+    body.style.paddingBottom = '80px';
+
+    // Datos del cliente
+    const secDatos = document.createElement('div');
+    secDatos.innerHTML = `
+      <div class="section-title">
+        Datos del cliente
+        <div style="display:flex;gap:8px">
+          <a id="edit-btn" style="color:var(--gold);cursor:pointer"><i class="ti ti-edit" style="font-size:13px"></i> Editar</a>
+          <a id="delete-btn" style="color:var(--danger);cursor:pointer"><i class="ti ti-trash" style="font-size:13px"></i> Eliminar</a>
         </div>
       </div>
-
-      <div class="stats-row">
-        <div class="stat-card">
-          <div class="stat-val">${Fmt.currency(saldoTotal)}</div>
-          <div class="stat-lbl">Saldo total</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-val">${activos.length}</div>
-          <div class="stat-lbl">Activos</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-val">${pagosTotal}</div>
-          <div class="stat-lbl">Pagos hechos</div>
-        </div>
-      </div>
-
-      <div class="scroll-area" style="padding-bottom:16px">
-        <div class="section-title">
-          Datos del cliente
-          <div style="display:flex;gap:8px">
-            <a onclick="App.navigate('editarCliente','${clienteId}')"><i class="ti ti-edit" style="font-size:13px"></i> Editar</a>
-            <a id="delete-cliente-btn" style="color:var(--danger);cursor:pointer"><i class="ti ti-trash" style="font-size:13px"></i> Eliminar</a>
+      <div style="padding:0 16px;display:flex;flex-direction:column;gap:6px">
+        ${domicilio ? `<div class="info-box"><i class="ti ti-map-pin"></i><span>${domicilio}</span></div>` : ''}
+        ${cliente.ine ? `<div class="info-box"><i class="ti ti-id"></i><span>INE: ${cliente.ine}</span></div>` : ''}
+        ${cliente.refNombre ? `<div class="info-box"><i class="ti ti-user"></i><span>Ref: ${cliente.refNombre}${cliente.refParentesco ? ' ('+cliente.refParentesco+')' : ''} · ${cliente.refTelefono || ''}</span></div>` : ''}
+        <div class="info-box"><i class="ti ti-calendar"></i><span>Cliente desde ${Fmt.date(cliente.createdAt)}</span></div>
+        <div style="display:flex;gap:8px;margin-top:2px">
+          <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:${cliente.fotoIneUrl ? 'var(--success)' : 'var(--ink-soft)'}">
+            <i class="ti ti-id" style="font-size:14px"></i> INE ${cliente.fotoIneUrl ? '✓' : 'pendiente'}
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:${cliente.fotoDomicilioUrl ? 'var(--success)' : 'var(--ink-soft)'}">
+            <i class="ti ti-home" style="font-size:14px"></i> Domicilio ${cliente.fotoDomicilioUrl ? '✓' : 'pendiente'}
           </div>
         </div>
-        <div style="padding:0 16px;display:flex;flex-direction:column;gap:6px">
-          <div class="info-box"><i class="ti ti-map-pin"></i><span>${Store.getDomicilioCompleto(cliente)}</span></div>
-          ${cliente.ine ? `<div class="info-box"><i class="ti ti-id"></i><span>INE: ${cliente.ine}</span></div>` : ''}
-          ${(cliente.refNombre) ? `<div class="info-box"><i class="ti ti-user"></i><span>Ref: ${cliente.refNombre}${cliente.refParentesco ? ' ('+cliente.refParentesco+')' : ''} · ${cliente.refTelefono || ''}${cliente.refDireccion ? ' · '+cliente.refDireccion : ''}</span></div>` : ''}
-          <div class="info-box"><i class="ti ti-calendar"></i><span>Cliente desde ${Fmt.date(cliente.createdAt)}</span></div>
-          <div style="display:flex;gap:8px;margin-top:4px">
-            <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:${cliente.fotoIneUrl ? 'var(--success)' : 'var(--ink-soft)'}"><i class="ti ti-id" style="font-size:14px"></i> INE ${cliente.fotoIneUrl ? '✓' : 'pendiente'}</div>
-            <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:${cliente.fotoDomicilioUrl ? 'var(--success)' : 'var(--ink-soft)'}"><i class="ti ti-home" style="font-size:14px"></i> Domicilio ${cliente.fotoDomicilioUrl ? '✓' : 'pendiente'}</div>
-          </div>
-        </div>
+      </div>`;
+    body.appendChild(secDatos);
 
-        ${prestamos.length === 0 ? `
-          <div class="empty-state" style="padding-top:24px">
-            <i class="ti ti-cash"></i>
-            <h3>Sin préstamos</h3>
-            <p>Crea el primer préstamo para este cliente</p>
-          </div>
-        ` : prestamos.map(p => {
-          const pagosHechos = Store.getPagosCount(p.id);
-          const saldo = Store.getSaldoRestante(p.id);
-          const tabla = Store.getTableraAmortizacion(p);
-          const vencidas = tabla.filter(t => t.estado === 'vencido').length;
-          const pagosLista = Store.getPagosByPrestamo(p.id);
-
-          return `
-            <div class="section-title" style="margin-top:8px">
-              Préstamo ${Fmt.folioPagare(p.folioNum)}
-              <span class="badge ${p.estado === 'liquidado' ? 'badge-ok' : vencidas > 0 ? 'badge-late' : 'badge-new'}" style="font-size:10px">
-                ${p.estado === 'liquidado' ? 'Liquidado' : vencidas > 0 ? `${vencidas} vencido${vencidas>1?'s':''}` : 'Activo'}
-              </span>
-            </div>
-
-            <div class="stats-row" style="padding-top:0">
-              <div class="stat-card">
-                <div class="stat-val">${Fmt.currency(p.monto)}</div>
-                <div class="stat-lbl">Capital</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-val">${pagosHechos}/${p.plazo}</div>
-                <div class="stat-lbl">Pagos</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-val" style="${saldo > 0 ? 'color:var(--rose-deep)' : 'color:var(--success)'}">${Fmt.currency(saldo)}</div>
-                <div class="stat-lbl">Saldo</div>
-              </div>
-            </div>
-
-            <div class="btn-row" style="padding-top:0">
-              ${p.estado === 'activo' ? `<button class="btn btn-primary btn-sm" onclick="App.navigate('registrarPago','${p.id}')"><i class="ti ti-plus"></i> Registrar pago</button>` : ''}
-              <button class="btn btn-secondary btn-sm" onclick="App.navigate('verTabla','${p.id}')"><i class="ti ti-table"></i> Tabla</button>
-              <button class="btn btn-secondary btn-sm" onclick="PDF.generarPagare(Store.getPrestamo('${p.id}'), Store.getCliente('${clienteId}'))"><i class="ti ti-file-text"></i> Pagaré</button>
-            </div>
-
-            <div class="section-title" style="font-size:12px;padding-top:4px">Historial de pagos</div>
-            <div class="payment-list">
-              ${pagosLista.length === 0
-                ? `<div style="padding:12px 0;font-size:13px;color:var(--ink-soft);text-align:center">Sin pagos registrados aún</div>`
-                : pagosLista.slice().reverse().map((pg, i) => `
-                <div class="pmt-row">
-                  <div class="pmt-dot paid"></div>
-                  <div class="pmt-info">
-                    <div class="pmt-date">${Fmt.date(pg.fecha)}</div>
-                    <div class="pmt-note">${pg.metodo.charAt(0).toUpperCase()+pg.metodo.slice(1)}${pg.folio ? ' · ' + pg.folio : ''}${pg.nota ? ' · ' + pg.nota : ''}${pg.comprobanteUrl ? ' · <span style="color:var(--rose)"><i class="ti ti-photo" style="font-size:11px"></i> Con comprobante</span>' : ''}</div>
-                  </div>
-                  <div>
-                    <div class="pmt-amount">${Fmt.currency(pg.monto)}</div>
-                  </div>
-                  <button onclick="PDF.generarRecibo(Store.getPagos().find(x=>x.id==='${pg.id}'), Store.getPrestamo('${p.id}'), Store.getCliente('${clienteId}'), ${pagosLista.length - i})" style="background:none;border:none;cursor:pointer;padding:4px" title="Ver comprobante">
-                    <i class="ti ti-receipt" style="font-size:16px;color:var(--rose-deep)"></i>
-                  </button>
-                </div>`).join('')
-              }
-            </div>
-          `;
-        }).join('')}
-
-        <div style="padding:8px 16px 16px">
-          <button class="btn btn-mauve" onclick="App.navigate('nuevoPrestamo', '${clienteId}')">
-            <i class="ti ti-plus"></i> Nuevo préstamo para este cliente
-          </button>
-        </div>
-      </div>
-    `;
-    el.querySelector('#delete-cliente-btn').addEventListener('click', async () => {
-      const ps = Store.getPrestamosByCliente(clienteId);
-      const activos = ps.filter(p => p.estado === 'activo').length;
-      const msg = activos > 0
-        ? \`Este cliente tiene \${activos} préstamo(s) activo(s). Se eliminarán también todos sus préstamos y pagos. ¿Continuar?\`
-        : '¿Eliminar este cliente y todos sus registros? Esta acción no se puede deshacer.';
+    secDatos.querySelector('#edit-btn').onclick = () => App.navigate('editarCliente', clienteId);
+    secDatos.querySelector('#delete-btn').addEventListener('click', async () => {
+      const psActivos = prestamos.filter(p => p.estado === 'activo').length;
+      const msg = psActivos > 0
+        ? `Este cliente tiene ${psActivos} préstamo(s) activo(s). Se eliminarán todos sus registros. ¿Continuar?`
+        : '¿Eliminar este cliente y todos sus registros?';
       if (!window.confirm(msg)) return;
       await Store.deleteCliente(clienteId);
       Toast.success('Cliente eliminado');
       App.navigate('clientes');
     });
 
+    // ── Préstamos ──
+    if (prestamos.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.style.paddingTop = '24px';
+      empty.innerHTML = `<i class="ti ti-cash"></i><h3>Sin préstamos</h3><p>Crea el primer préstamo para este cliente</p>`;
+      body.appendChild(empty);
+    } else {
+      prestamos.forEach(p => {
+        const pagosHechos = Store.getPagosCount(p.id);
+        const saldo = Store.getSaldoRestante(p.id);
+        const tabla = Store.getTableraAmortizacion(p);
+        const vencidas = tabla.filter(t => t.estado === 'vencido').length;
+        const pagosLista = Store.getPagosByPrestamo(p.id);
+
+        const secPrestamo = document.createElement('div');
+
+        // Header del préstamo
+        const hdr = document.createElement('div');
+        hdr.className = 'section-title';
+        hdr.style.marginTop = '8px';
+        hdr.innerHTML = `
+          <span>Préstamo ${Fmt.folioPagare(p.folioNum)}</span>
+          <span class="badge ${p.estado === 'liquidado' ? 'badge-ok' : vencidas > 0 ? 'badge-late' : 'badge-new'}" style="font-size:10px">
+            ${p.estado === 'liquidado' ? 'Liquidado' : vencidas > 0 ? vencidas + ' vencido' + (vencidas>1?'s':'') : 'Activo'}
+          </span>`;
+        secPrestamo.appendChild(hdr);
+
+        // Mini stats
+        const ms = document.createElement('div');
+        ms.className = 'stats-row';
+        ms.style.paddingTop = '0';
+        ms.innerHTML = `
+          <div class="stat-card"><div class="stat-val">${Fmt.currency(p.monto)}</div><div class="stat-lbl">Capital</div></div>
+          <div class="stat-card"><div class="stat-val">${pagosHechos}/${p.plazo}</div><div class="stat-lbl">Pagos</div></div>
+          <div class="stat-card"><div class="stat-val" style="${saldo > 0 ? 'color:var(--gold-deep)' : 'color:var(--success)'}">${Fmt.currency(saldo)}</div><div class="stat-lbl">Saldo</div></div>`;
+        secPrestamo.appendChild(ms);
+
+        // Botones
+        const btns = document.createElement('div');
+        btns.className = 'btn-row';
+        btns.style.paddingTop = '0';
+        if (p.estado === 'activo') {
+          const btnPago = document.createElement('button');
+          btnPago.className = 'btn btn-primary btn-sm';
+          btnPago.innerHTML = '<i class="ti ti-plus"></i> Registrar pago';
+          btnPago.onclick = () => App.navigate('registrarPago', p.id);
+          btns.appendChild(btnPago);
+        }
+        const btnTabla = document.createElement('button');
+        btnTabla.className = 'btn btn-secondary btn-sm';
+        btnTabla.innerHTML = '<i class="ti ti-table"></i> Tabla';
+        btnTabla.onclick = () => App.navigate('verTabla', p.id);
+        btns.appendChild(btnTabla);
+
+        const btnPagare = document.createElement('button');
+        btnPagare.className = 'btn btn-secondary btn-sm';
+        btnPagare.innerHTML = '<i class="ti ti-file-text"></i> Pagaré';
+        btnPagare.onclick = () => PDF.generarPagare(p, cliente);
+        btns.appendChild(btnPagare);
+        secPrestamo.appendChild(btns);
+
+        // Historial pagos
+        const histTitle = document.createElement('div');
+        histTitle.className = 'section-title';
+        histTitle.style.cssText = 'font-size:12px;padding-top:4px';
+        histTitle.textContent = 'Historial de pagos';
+        secPrestamo.appendChild(histTitle);
+
+        const hist = document.createElement('div');
+        hist.className = 'payment-list';
+        if (pagosLista.length === 0) {
+          hist.innerHTML = '<div style="padding:12px 0;font-size:13px;color:var(--ink-soft);text-align:center">Sin pagos registrados aún</div>';
+        } else {
+          [...pagosLista].reverse().forEach((pg, i) => {
+            const row = document.createElement('div');
+            row.className = 'pmt-row';
+            row.innerHTML = `
+              <div class="pmt-dot paid"></div>
+              <div class="pmt-info">
+                <div class="pmt-date">${Fmt.date(pg.fecha)}</div>
+                <div class="pmt-note">${pg.metodo.charAt(0).toUpperCase()+pg.metodo.slice(1)}${pg.folio ? ' · '+pg.folio : ''}${pg.nota ? ' · '+pg.nota : ''}${pg.comprobanteUrl ? ' · <span style="color:var(--gold)"><i class="ti ti-photo" style="font-size:11px"></i> Comprobante</span>' : ''}</div>
+              </div>
+              <div class="pmt-amount">${Fmt.currency(pg.monto)}</div>`;
+
+            const btnRecibo = document.createElement('button');
+            btnRecibo.style.cssText = 'background:none;border:none;cursor:pointer;padding:4px';
+            btnRecibo.title = 'Ver comprobante';
+            btnRecibo.innerHTML = '<i class="ti ti-receipt" style="font-size:16px;color:var(--gold-deep)"></i>';
+            btnRecibo.onclick = () => PDF.generarRecibo(pg, p, cliente, pagosLista.length - i);
+            row.appendChild(btnRecibo);
+            hist.appendChild(row);
+          });
+        }
+        secPrestamo.appendChild(hist);
+        body.appendChild(secPrestamo);
+      });
+    }
+
+    // Botón nuevo préstamo
+    const btnNuevo = document.createElement('div');
+    btnNuevo.style.padding = '8px 16px 16px';
+    btnNuevo.innerHTML = `<button class="btn btn-mauve" id="btn-nuevo-prestamo"><i class="ti ti-plus"></i> Nuevo préstamo para este cliente</button>`;
+    body.appendChild(btnNuevo);
+    btnNuevo.querySelector('#btn-nuevo-prestamo').onclick = () => App.navigate('nuevoPrestamo', clienteId);
+
+    el.appendChild(body);
     return el;
   }
 };

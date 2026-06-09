@@ -662,7 +662,7 @@ const Store = (() => {
   a pagar a la orden de <strong>${Store.ACREEDORA}</strong>, en su carácter de <em>beneficiaria</em>,
   la cantidad de <strong>${Fmt.currency(prestamo.totalConInteres)}</strong>
   (${Fmt.importe(prestamo.totalConInteres)}),
-  en el municipio de <strong>García, Nuevo León</strong>,
+  en la plaza de <strong>García, Nuevo León</strong>,
   conforme al siguiente plan de amortización:
 </p>
 
@@ -722,7 +722,7 @@ const Store = (() => {
   Código de Comercio y al Código Federal de Procedimientos Civiles aplicable supletoriamente.
   El suscriptor reconoce haber recibido el capital pactado a su entera satisfacción,
   renunciando expresamente al fuero que pudiere corresponderle por razón de su domicilio,
-  sometiéndose a los tribunales competentes del Estado de Nuevo León.
+  sometiéndose a los tribunales competentes de García, Nuevo León.
   La tasa de interés pactada fue libremente convenida entre las partes conforme al
   artículo 362 del Código de Comercio y el artículo 2395 del Código Civil Federal.
 </div>
@@ -1731,7 +1731,7 @@ const Modal = {
           ? `Tu saldo restante es de *${Fmt.currency(nuevoSaldo)}* (${Store.getPagosCount(prestamoId)} de ${prestamo.plazo} pagos completados).`
           : `✅ *¡Felicidades! Tu préstamo ha sido liquidado en su totalidad.* Muchas gracias por tu puntualidad.`;
 
-        const msg = `Estimada/o *${nombre}*,
+        const msg = `Hola *${nombre}* 👋\n\nTe confirmamos tu pago recibido 🪙\n\n✅ *Monto:* ${Fmt.currency(prestamo.pagoCuota)}\n📅 *Fecha:* ${Fmt.date(fecha)}\n💳 *Método:* ${metodoLabel.charAt(0).toUpperCase() + metodoLabel.slice(1)}${folioTexto}\n\n${saldoTexto}\n\n${comprobanteDataUrl ? '🧾 Adjuntamos comprobante de pago.\n\n' : ''}Cualquier duda, con gusto te atendemos 😊\n\n*Varito* · Tu dinerito, siempre a la mano`;
 
 Por medio del presente mensaje le confirmamos la recepción de su pago:
 
@@ -1743,7 +1743,7 @@ ${saldoTexto}
 
 ${comprobanteDataUrl ? '📎 Se adjunta imagen del comprobante de pago.\n\n' : ''}Ante cualquier duda, no dude en contactarnos.
 
-_Varito · Tu dinerito, siempre a la mano`;
+_Varito — Servicios de crédito personal · Varito_`;
 
         const encoded = encodeURIComponent(msg);
         setTimeout(() => window.open(`https://wa.me/52${cliente.telefono}?text=${encoded}`, '_blank'), 600);

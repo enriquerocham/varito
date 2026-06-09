@@ -1808,8 +1808,29 @@ _Varito — Servicios de crédito personal · Varito_`;
             }).join('')
           }
         </div>
+
+        <div style="padding:0 16px 24px">
+          <div style="height:0.5px;background:var(--sand-mid);margin-bottom:16px"></div>
+          <div style="font-size:11px;color:var(--ink-soft);margin-bottom:8px;text-align:center">Zona de administración</div>
+          <button class="btn btn-secondary" id="reset-btn" style="border-color:var(--danger-light);color:var(--danger)">
+            <i class="ti ti-trash"></i> Eliminar todos los datos de prueba
+          </button>
+        </div>
       </div>
     `;
+
+    el.querySelector('#reset-btn').addEventListener('click', () => {
+      const confirmar = window.confirm('¿Segura? Esto borrará TODOS los clientes, préstamos y pagos. Esta acción no se puede deshacer.');
+      if (!confirmar) return;
+      const confirmar2 = window.confirm('Última confirmación: se borrarán todos los datos y la app quedará en blanco.');
+      if (!confirmar2) return;
+      localStorage.removeItem('vr_clientes');
+      localStorage.removeItem('vr_prestamos');
+      localStorage.removeItem('vr_pagos');
+      Toast.success('Datos eliminados. La app está lista.');
+      setTimeout(() => App.navigate('dashboard'), 800);
+    });
+
     return el;
   }
 };

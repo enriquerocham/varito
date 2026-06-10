@@ -950,17 +950,13 @@ const Modal = {
   render() {
     const stats = Store.getStats();
     const clientes = Store.getClientes();
-    const prestamos = Store.getPrestamos();
-    const pagos = Store.getPagos();
 
     const getEstadoCliente = (clienteId) => {
       const ps = Store.getPrestamosByCliente(clienteId).filter(p => p.estado === 'activo');
       if (!ps.length) return 'inactivo';
       const tabla = ps.flatMap(p => Store.getTableraAmortizacion(p));
-      const vencidas = tabla.filter(c => c.estado === 'vencido').length;
-      const hoy = tabla.filter(c => c.estado === 'hoy').length;
-      if (vencidas > 0) return 'atrasado';
-      if (hoy > 0) return 'hoy';
+      if (tabla.filter(c => c.estado === 'vencido').length > 0) return 'atrasado';
+      if (tabla.filter(c => c.estado === 'hoy').length > 0) return 'hoy';
       return 'corriente';
     };
 
@@ -974,104 +970,143 @@ const Modal = {
     });
 
     const el = document.createElement('div');
-    el.innerHTML = `
-      <div class="top-bar">
-        <div>
-          <div style="font-size:12px;color:var(--ink-soft)">Bienvenida,</div>
-          <div class="logo"><img src="https://enriquerocham.github.io/varito/%C3%8DCONO.png" alt="Varito" style="height:36px;width:auto" onerror="this.style.display='none'"/></div>
-        </div>
-        <div class="top-bar-actions">
-          <button onclick="App.navigate('solicitudes')" style="background:none;border:none;cursor:pointer;padding:4px;position:relative">
-            <i class="ti ti-inbox" style="font-size:22px;color:var(--ink-mid)"></i>
-            ${stats.pendientes > 0 ? '<div style="position:absolute;top:-2px;right:-2px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">'+stats.pendientes+'</div>' : ''}
-          </button>
-          <button onclick="App.navigate('configuracion')" style="background:none;border:none;cursor:pointer;padding:4px">
-            <i class="ti ti-settings" style="font-size:22px;color:var(--ink-mid)"></i>
-          </button>
+
+    // ── Top bar ──
+    const topBar = document.createElement('div');
+    topBar.className = 'top-bar';
+    topBar.innerHTML = `
+      <div>
+        <div style="font-size:12px;color:var(--ink-soft)">Bienvenida,</div>
+        <div class="logo">
+          <img src="https://enriquerocham.github.io/varito/ÍCONO.png" alt="Varito" style="height:36px;width:auto" onerror="this.style.display='none'"/>
+          <div class="wordmark" style="font-size:20px;font-weight:700;color:var(--navy);margin-left:6px">varito</div>
         </div>
       </div>
+      <div class="top-bar-actions">
+        <button onclick="App.navigate('reportes')" style="background:none;border:none;cursor:pointer;padding:4px">
+          <i class="ti ti-chart-bar" style="font-size:22px;color:var(--ink-mid)"></i>
+        </button>
+        <button onclick="App.navigate('configuracion')" style="background:none;border:none;cursor:pointer;padding:4px">
+          <i class="ti ti-settings" style="font-size:22px;color:var(--ink-mid)"></i>
+        </button>
+      </div>`;
+    el.appendChild(topBar);
 
-      <div class="scroll-area">
-        <div class="hero-card">
-          <svg class="hero-wave" width="180" height="100" viewBox="0 0 180 100" fill="none">
-            <path d="M0 50 Q45 10 90 50 Q135 90 180 50" stroke="white" stroke-width="2.5" fill="none"/>
-            <path d="M0 70 Q45 30 90 70 Q135 110 180 70" stroke="white" stroke-width="1.5" fill="none"/>
-          </svg>
-          <div class="hero-label">Cartera activa</div>
-          <div class="hero-amount">${Fmt.currency(stats.cartera)}</div>
-          <div class="hero-sub">${stats.activos} préstamo${stats.activos !== 1 ? 's' : ''} activo${stats.activos !== 1 ? 's' : ''} · ${stats.liquidados} liquidado${stats.liquidados !== 1 ? 's' : ''}</div>
-          <div class="hero-chips">
-            <div class="chip ${this.filtro === 'todos' ? 'active' : ''}" data-filtro="todos">Todos</div>
-            <div class="chip ${this.filtro === 'corriente' ? 'active' : ''}" data-filtro="corriente">Al corriente</div>
-            <div class="chip ${this.filtro === 'atrasado' ? 'active' : ''}" data-filtro="atrasado">Con atraso</div>
+    // ── Scroll area ──
+    const scroll = document.createElement('div');
+    scroll.className = 'scroll-area';
+
+    // Hero card
+    const hero = document.createElement('div');
+    hero.className = 'hero-card';
+    hero.innerHTML = `
+      <svg class="hero-wave" width="180" height="100" viewBox="0 0 180 100" fill="none">
+        <path d="M0 50 Q45 10 90 50 Q135 90 180 50" stroke="white" stroke-width="2.5" fill="none"/>
+        <path d="M0 70 Q45 30 90 70 Q135 110 180 70" stroke="white" stroke-width="1.5" fill="none"/>
+      </svg>
+      <div class="hero-label">Cartera activa</div>
+      <div class="hero-amount">${Fmt.currency(stats.cartera)}</div>
+      <div class="hero-sub">${stats.activos} préstamo${stats.activos !== 1 ? 's' : ''} activo${stats.activos !== 1 ? 's' : ''} · ${stats.liquidados} liquidado${stats.liquidados !== 1 ? 's' : ''}</div>
+      <div class="hero-chips">
+        <div class="chip ${this.filtro === 'todos' ? 'active' : ''}" data-filtro="todos">Todos</div>
+        <div class="chip ${this.filtro === 'corriente' ? 'active' : ''}" data-filtro="corriente">Al corriente</div>
+        <div class="chip ${this.filtro === 'atrasado' ? 'active' : ''}" data-filtro="atrasado">Con atraso</div>
+      </div>`;
+    scroll.appendChild(hero);
+
+    // Section: Acciones rápidas
+    const secAcc = document.createElement('div');
+    secAcc.className = 'section-title';
+    secAcc.textContent = 'Acciones rápidas';
+    scroll.appendChild(secAcc);
+
+    const qaRow = document.createElement('div');
+    qaRow.className = 'quick-actions';
+
+    const qaButtons = [
+      { icon: 'ti-user-plus', cls: 'rose', label: 'Nuevo cliente', route: 'nuevoCliente' },
+      { icon: 'ti-cash', cls: 'mauve', label: 'Nuevo préstamo', route: 'nuevoPrestamo' },
+      { icon: 'ti-list', cls: 'green', label: 'Ver cartera', route: 'clientes' },
+    ];
+
+    qaButtons.forEach(qa => {
+      const btn = document.createElement('button');
+      btn.className = 'qa-btn';
+      btn.innerHTML = `<div class="qa-icon ${qa.cls}"><i class="ti ${qa.icon}"></i></div><span class="qa-label">${qa.label}</span>`;
+      btn.onclick = () => App.navigate(qa.route);
+      qaRow.appendChild(btn);
+    });
+
+    // Solicitudes badge button if pending
+    if (stats.solicitudesPendientes > 0) {
+      const btnSol = document.createElement('button');
+      btnSol.className = 'qa-btn';
+      btnSol.style.position = 'relative';
+      btnSol.innerHTML = `
+        <div class="qa-icon" style="background:#FFF3CD;color:#8B6914;position:relative">
+          <i class="ti ti-inbox"></i>
+          <span style="position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">${stats.solicitudesPendientes}</span>
+        </div>
+        <span class="qa-label">Solicitudes</span>`;
+      btnSol.onclick = () => App.navigate('solicitudes');
+      qaRow.appendChild(btnSol);
+    }
+    scroll.appendChild(qaRow);
+
+    // Section: Clientes activos
+    const secCli = document.createElement('div');
+    secCli.className = 'section-title';
+    secCli.innerHTML = `<span>Clientes activos</span><a onclick="App.navigate('clientes')">Ver todos <i class="ti ti-arrow-right" style="font-size:11px"></i></a>`;
+    scroll.appendChild(secCli);
+
+    const cliList = document.createElement('div');
+    cliList.className = 'client-list';
+
+    if (clientesFiltrados.length === 0) {
+      cliList.innerHTML = `
+        <div class="empty-state">
+          <i class="ti ti-users"></i>
+          <h3>¡Todo listo, Yaretzi!</h3>
+          <p>Toca "Nuevo cliente" para registrar tu primer cliente y comenzar.</p>
+        </div>`;
+    } else {
+      clientesFiltrados.slice(0, 5).forEach(c => {
+        const ps = Store.getPrestamosByCliente(c.id).filter(p => p.estado === 'activo');
+        const saldo = ps.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0);
+        const estado = getEstadoCliente(c.id);
+        const freq = ps[0] ? Fmt.frecuenciaLabel(ps[0].frecuencia) : '';
+
+        let badgeHtml = '';
+        if (estado === 'atrasado') badgeHtml = '<span class="badge badge-late">Con atraso</span>';
+        else if (estado === 'hoy') badgeHtml = '<span class="badge badge-warn">Vence hoy</span>';
+        else badgeHtml = '<span class="badge badge-ok">Al corriente</span>';
+
+        const row = document.createElement('div');
+        row.className = 'client-row';
+        row.innerHTML = `
+          <div class="c-avatar ${Fmt.avatarColor(c.nombre)}">${Fmt.initials(c.nombre)}</div>
+          <div class="c-info">
+            <div class="c-name">${c.nombre}</div>
+            <div class="c-detail">${freq} · ${ps.length} préstamo${ps.length !== 1 ? 's' : ''}</div>
           </div>
-        </div>
+          <div class="c-right">
+            <div class="c-amount">${Fmt.currency(saldo)}</div>
+            ${badgeHtml}
+          </div>`;
+        row.onclick = () => App.navigate('clienteDetalle', c.id);
+        cliList.appendChild(row);
+      });
+    }
+    scroll.appendChild(cliList);
 
-        <div class="section-title">Acciones rápidas</div>
-        <div class="quick-actions">
-          <button class="qa-btn" onclick="App.navigate('nuevoCliente')">
-            <div class="qa-icon rose"><i class="ti ti-user-plus"></i></div>
-            <span class="qa-label">Nuevo cliente</span>
-          </button>
-          <button class="qa-btn" onclick="App.navigate('nuevoPrestamo')">
-            <div class="qa-icon mauve"><i class="ti ti-cash"></i></div>
-            <span class="qa-label">Nuevo préstamo</span>
-          </button>
-          <button class="qa-btn" onclick="App.navigate('clientes')">
-            <div class="qa-icon green"><i class="ti ti-list"></i></div>
-            <span class="qa-label">Ver cartera</span>
-          </button>
-          ${stats.solicitudesPendientes > 0 ? \`
-          <button class="qa-btn" onclick="App.navigate('solicitudes')" style="position:relative">
-            <div class="qa-icon" style="background:#FFF3CD;color:#8B6914;position:relative">
-              <i class="ti ti-inbox"></i>
-              <span style="position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">\${stats.solicitudesPendientes}</span>
-            </div>
-            <span class="qa-label">Solicitudes</span>
-          </button>\` : ''}
-        </div>
+    const spacer = document.createElement('div');
+    spacer.style.height = '16px';
+    scroll.appendChild(spacer);
 
-        <div class="section-title">
-          <span>Clientes activos</span>
-          <a onclick="App.navigate('clientes')">Ver todos <i class="ti ti-arrow-right" style="font-size:11px"></i></a>
-        </div>
+    el.appendChild(scroll);
 
-        <div class="client-list">
-          ${clientesFiltrados.length === 0 ? `
-            <div class="empty-state">
-              <i class="ti ti-users"></i>
-              <h3>¡Todo listo, Yaretzi!</h3>
-              <p>Toca "Nuevo cliente" para registrar tu primer cliente y comenzar.</p>
-            </div>
-          ` : clientesFiltrados.slice(0, 5).map(c => {
-            const ps = Store.getPrestamosByCliente(c.id).filter(p => p.estado === 'activo');
-            const saldo = ps.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0);
-            const estado = getEstadoCliente(c.id);
-            const badge = estado === 'atrasado'
-              ? `<span class="badge badge-late">Con atraso</span>`
-              : estado === 'hoy'
-              ? `<span class="badge badge-warn">Vence hoy</span>`
-              : `<span class="badge badge-ok">Al corriente</span>`;
-            const freq = ps[0] ? Fmt.frecuenciaLabel(ps[0].frecuencia) : '';
-            return `
-              <div class="client-row" onclick="App.navigate('clienteDetalle', '${c.id}')">
-                <div class="c-avatar ${Fmt.avatarColor(c.nombre)}">${Fmt.initials(c.nombre)}</div>
-                <div class="c-info">
-                  <div class="c-name">${c.nombre}</div>
-                  <div class="c-detail">${freq} · ${ps.length} préstamo${ps.length !== 1 ? 's' : ''}</div>
-                </div>
-                <div class="c-right">
-                  <div class="c-amount">${Fmt.currency(saldo)}</div>
-                  ${badge}
-                </div>
-              </div>`;
-          }).join('')}
-        </div>
-        <div style="height:16px"></div>
-      </div>
-    `;
-
-    el.querySelectorAll('.chip[data-filtro]').forEach(chip => {
+    // Chip filter listeners
+    hero.querySelectorAll('.chip[data-filtro]').forEach(chip => {
       chip.addEventListener('click', () => {
         this.filtro = chip.dataset.filtro;
         App.renderView();

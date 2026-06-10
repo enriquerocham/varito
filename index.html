@@ -1186,33 +1186,33 @@ const Modal = {
   }
 };
 </script><script>const ClienteDetalle = {
-  expandedLoan: null,
-
   render(clienteId) {
     const cliente = Store.getCliente(clienteId);
     if (!cliente) return App.navigate('clientes');
 
     const prestamos = Store.getPrestamosByCliente(clienteId);
     const activos = prestamos.filter(p => p.estado === 'activo');
-    const saldoTotal = activos.reduce((s,p) => s + Store.getSaldoRestante(p.id), 0);
-    const pagosTotal = prestamos.reduce((s,p) => s + Store.getPagosCount(p.id), 0);
-    const limite = Store.getLimiteCredito(clienteId);
+    const saldoTotal = activos.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0);
+    const pagosTotal = prestamos.reduce((s, p) => s + Store.getPagosCount(p.id), 0);
 
     const el = document.createElement('div');
 
-    // Header
+    // ── Header ──
     const header = document.createElement('div');
     header.className = 'page-header';
     header.innerHTML = `
       <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
-        <div class="c-avatar ${Fmt.avatarColor(cliente.nombre)}" style="width:50px;height:50px;font-size:16px">${Fmt.initials(cliente.nombre)}</div>
-        <div><h1>${cliente.nombre}</h1><p><i class="ti ti-phone" style="font-size:11px"></i> ${cliente.telefono}</p></div>
+        <div class="c-avatar ${Fmt.avatarColor(cliente.nombre)}" style="width:50px;height:50px;font-size:16px;flex-shrink:0">${Fmt.initials(cliente.nombre)}</div>
+        <div>
+          <h1>${cliente.nombre}</h1>
+          <p><i class="ti ti-phone" style="font-size:11px"></i> ${cliente.telefono}</p>
+        </div>
       </div>`;
     el.appendChild(header);
     el.querySelector('#back-btn').onclick = () => App.navigate('clientes');
 
-    // Stats
+    // ── Stats ──
     const stats = document.createElement('div');
     stats.className = 'stats-row';
     stats.innerHTML = `
@@ -1221,180 +1221,266 @@ const Modal = {
       <div class="stat-card"><div class="stat-val">${pagosTotal}</div><div class="stat-lbl">Pagos hechos</div></div>`;
     el.appendChild(stats);
 
+    // ── Body ──
     const body = document.createElement('div');
     body.className = 'scroll-area';
     body.style.paddingBottom = '80px';
 
     // Datos del cliente
     const secDatos = document.createElement('div');
-    secDatos.innerHTML = `
-      <div class="section-title">
-        Datos del cliente
-        <div style="display:flex;gap:8px">
-          <a id="edit-btn" style="color:var(--green);cursor:pointer"><i class="ti ti-edit" style="font-size:13px"></i> Editar</a>
-          <a id="delete-btn" style="color:var(--danger);cursor:pointer"><i class="ti ti-trash" style="font-size:13px"></i> Eliminar</a>
-        </div>
-      </div>
-      <div style="padding:0 16px;display:flex;flex-direction:column;gap:6px">
-        ${Store.getDomicilioCompleto(cliente) ? `<div class="info-box"><i class="ti ti-map-pin"></i><span>${Store.getDomicilioCompleto(cliente)}</span></div>` : ''}
-        ${cliente.ine ? `<div class="info-box"><i class="ti ti-id"></i><span>INE: ${cliente.ine}</span></div>` : ''}
-        ${cliente.fechaNacimiento ? `<div class="info-box"><i class="ti ti-cake"></i><span>Nacimiento: ${Fmt.date(cliente.fechaNacimiento)}</span></div>` : ''}
-        ${cliente.refNombre ? `<div class="info-box"><i class="ti ti-user"></i><span>Ref: ${cliente.refNombre} (${cliente.refParentesco||''}) · ${cliente.refTelefono||''}</span></div>` : ''}
-        <div class="info-box" style="background:var(--green-light)">
-          <i class="ti ti-trending-up" style="color:var(--green-deep)"></i>
-          <span style="color:var(--green-deep);font-weight:500">Línea de crédito: ${Fmt.currency(limite)}</span>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:2px">
-          <div style="font-size:11px;color:${cliente.firmaUrl?'var(--success)':'var(--ink-soft)'}"><i class="ti ti-writing" style="font-size:13px"></i> Firma ${cliente.firmaUrl?'✓':'pendiente'}</div>
-          <div style="font-size:11px;color:${cliente.fotoIneUrl?'var(--success)':'var(--ink-soft)'}"><i class="ti ti-id" style="font-size:13px"></i> INE ${cliente.fotoIneUrl?'✓':'pendiente'}</div>
-        </div>
-        ${cliente.firmaUrl ? `<div style="border:0.5px solid var(--sand-mid);border-radius:var(--r-md);padding:8px;background:var(--white)"><div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px">FIRMA DEL CLIENTE</div><img src="${cliente.firmaUrl}" style="max-height:60px;width:auto"/></div>` : ''}
+
+    const datosHeader = document.createElement('div');
+    datosHeader.className = 'section-title';
+    datosHeader.innerHTML = `
+      <span>Datos del cliente</span>
+      <div style="display:flex;gap:8px">
+        <a id="edit-btn" style="color:var(--green);cursor:pointer"><i class="ti ti-edit" style="font-size:13px"></i> Editar</a>
+        <a id="delete-btn" style="color:var(--danger);cursor:pointer"><i class="ti ti-trash" style="font-size:13px"></i> Eliminar</a>
       </div>`;
+    secDatos.appendChild(datosHeader);
+
+    const datosBody = document.createElement('div');
+    datosBody.style.cssText = 'padding:0 16px;display:flex;flex-direction:column;gap:6px';
+
+    const domicilio = Store.getDomicilioCompleto(cliente);
+    const infoItems = [];
+    if (domicilio) infoItems.push({ icon: 'ti-map-pin', text: domicilio });
+    if (cliente.ine) infoItems.push({ icon: 'ti-id', text: 'INE: ' + cliente.ine });
+    if (cliente.fechaNacimiento) infoItems.push({ icon: 'ti-cake', text: 'Nacimiento: ' + Fmt.date(cliente.fechaNacimiento) });
+    if (cliente.refNombre) infoItems.push({ icon: 'ti-user', text: 'Ref: ' + cliente.refNombre + (cliente.refParentesco ? ' ('+cliente.refParentesco+')' : '') + (cliente.refTelefono ? ' · '+cliente.refTelefono : '') });
+    infoItems.push({ icon: 'ti-calendar', text: 'Cliente desde ' + Fmt.date(cliente.createdAt) });
+    infoItems.push({ icon: 'ti-credit-card', text: 'Línea de crédito: ' + Fmt.currency(Store.getLimiteCliente(cliente)) });
+
+    infoItems.forEach(item => {
+      const box = document.createElement('div');
+      box.className = 'info-box';
+      box.innerHTML = `<i class="ti ${item.icon}"></i><span>${item.text}</span>`;
+      datosBody.appendChild(box);
+    });
+
+    // Docs status
+    const docsRow = document.createElement('div');
+    docsRow.style.cssText = 'display:flex;gap:8px;margin-top:4px';
+    const ineStatus = document.createElement('div');
+    ineStatus.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:' + (cliente.fotoIneUrl ? 'var(--success)' : 'var(--ink-soft)');
+    ineStatus.innerHTML = `<i class="ti ti-id" style="font-size:14px"></i> INE ${cliente.fotoIneUrl ? '✓' : 'pendiente'}`;
+    const domStatus = document.createElement('div');
+    domStatus.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:' + (cliente.fotoDomicilioUrl ? 'var(--success)' : 'var(--ink-soft)');
+    domStatus.innerHTML = `<i class="ti ti-home" style="font-size:14px"></i> Domicilio ${cliente.fotoDomicilioUrl ? '✓' : 'pendiente'}`;
+    docsRow.appendChild(ineStatus);
+    docsRow.appendChild(domStatus);
+    datosBody.appendChild(docsRow);
+
+    // Firma del cliente si existe
+    if (cliente.firmaClienteUrl) {
+      const firmaBox = document.createElement('div');
+      firmaBox.className = 'info-box';
+      firmaBox.style.cssText = 'flex-direction:column;align-items:flex-start;margin-top:4px';
+      firmaBox.innerHTML = `<div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px">FIRMA DEL CLIENTE</div>`;
+      const firmaImg = document.createElement('img');
+      firmaImg.src = cliente.firmaClienteUrl;
+      firmaImg.style.cssText = 'height:40px;object-fit:contain;max-width:100%';
+      firmaBox.appendChild(firmaImg);
+      datosBody.appendChild(firmaBox);
+    }
+
+    secDatos.appendChild(datosBody);
     body.appendChild(secDatos);
-    secDatos.querySelector('#edit-btn').onclick = () => App.navigate('editarCliente', clienteId);
-    secDatos.querySelector('#delete-btn').addEventListener('click', async () => {
-      if (!window.confirm('¿Eliminar este cliente y todos sus registros?')) return;
+
+    // Edit / Delete listeners
+    datosHeader.querySelector('#edit-btn').onclick = () => App.navigate('editarCliente', clienteId);
+    datosHeader.querySelector('#delete-btn').addEventListener('click', async () => {
+      const psActivos = prestamos.filter(p => p.estado === 'activo').length;
+      const msg = psActivos > 0
+        ? `Este cliente tiene ${psActivos} préstamo(s) activo(s). Se eliminarán todos sus registros. ¿Continuar?`
+        : '¿Eliminar este cliente y todos sus registros?';
+      if (!confirm(msg)) return;
       await Store.deleteCliente(clienteId);
       Toast.success('Cliente eliminado');
       App.navigate('clientes');
     });
 
-    // ── Préstamos colapsables ──
-    const secPrestamos = document.createElement('div');
-    const titleRow = document.createElement('div');
-    titleRow.className = 'section-title';
-    titleRow.innerHTML = `<span>Préstamos (${prestamos.length})</span>`;
-    secPrestamos.appendChild(titleRow);
-
+    // ── Préstamos ──
     if (prestamos.length === 0) {
       const empty = document.createElement('div');
-      empty.style.cssText = 'padding:20px;text-align:center;font-size:13px;color:var(--ink-soft)';
-      empty.textContent = 'Sin préstamos aún';
-      secPrestamos.appendChild(empty);
+      empty.className = 'empty-state';
+      empty.style.paddingTop = '24px';
+      empty.innerHTML = `<i class="ti ti-cash"></i><h3>Sin préstamos</h3><p>Crea el primer préstamo para este cliente</p>`;
+      body.appendChild(empty);
     } else {
       let expandedId = prestamos.length === 1 ? prestamos[0].id : null;
+
       prestamos.forEach(p => {
         const pagosHechos = Store.getPagosCount(p.id);
         const saldo = Store.getSaldoRestante(p.id);
         const tabla = Store.getTableraAmortizacion(p);
         const vencidas = tabla.filter(t => t.estado === 'vencido').length;
-        const isExpanded = ClienteDetalle.expandedLoan === p.id;
+        const pagosLista = Store.getPagosByPrestamo(p.id);
 
-        const card = document.createElement('div');
-        card.style.cssText = 'margin:0 16px 8px;border:0.5px solid var(--sand-mid);border-radius:var(--r-lg);overflow:hidden;background:var(--white)';
+        const secPrestamo = document.createElement('div');
 
-        // Card header (always visible)
-        const cardHeader = document.createElement('div');
-        cardHeader.style.cssText = 'padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;user-select:none';
-        const badgeClass = p.estado==='liquidado' ? 'badge-ok' : vencidas>0 ? 'badge-late' : 'badge-new';
-        const badgeText = p.estado==='liquidado' ? 'Liquidado' : vencidas>0 ? vencidas+' vencido'+(vencidas>1?'s':'') : 'Activo';
-        cardHeader.innerHTML = `
-          <div style="flex:1">
+        // ── Tarjeta colapsable ──
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--sand);border-radius:var(--r-lg);margin:8px 16px 0;cursor:pointer;border:0.5px solid var(--sand-mid)';
+
+        const badgeCls = p.estado === 'liquidado' ? 'badge-ok' : vencidas > 0 ? 'badge-late' : 'badge-new';
+        const badgeTxt = p.estado === 'liquidado' ? 'Liquidado' : vencidas > 0 ? vencidas+' vencido'+(vencidas>1?'s':'') : 'Activo';
+
+        const hdrLeft = document.createElement('div');
+        hdrLeft.style.cssText = 'display:flex;align-items:center;gap:10px';
+        hdrLeft.innerHTML = `
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--navy-light);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--navy)">${p.folioNum}</div>
+          <div>
             <div style="font-size:13px;font-weight:600;color:var(--ink)">${Fmt.folioPagare(p.folioNum)}</div>
-            <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${Fmt.currency(p.monto)} capital · ${pagosHechos}/${p.plazo} pagos</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:14px;font-weight:700;color:${saldo>0?'var(--navy)':'var(--success)'}">${Fmt.currency(saldo)}</div>
-            <span class="badge ${badgeClass}" style="margin-top:2px">${badgeText}</span>
-          </div>
-          <i class="ti ti-chevron-${isExpanded?'up':'down'}" id="chevron-${p.id}" style="font-size:16px;color:var(--ink-soft);margin-left:4px"></i>`;
-        card.appendChild(cardHeader);
+            <div style="font-size:11px;color:var(--ink-soft)">${Fmt.currency(p.monto)} · ${p.plazo} pagos</div>
+          </div>`;
 
-        // Card body (collapsible)
-        const cardBody = document.createElement('div');
-        cardBody.id = 'loan-body-' + p.id;
-        cardBody.style.cssText = `display:${isExpanded?'block':'none'};border-top:0.5px solid var(--sand-mid)`;
+        const hdrRight = document.createElement('div');
+        hdrRight.style.cssText = 'display:flex;align-items:center;gap:8px';
+
+        const badge = document.createElement('span');
+        badge.className = 'badge ' + badgeCls;
+        badge.style.fontSize = '10px';
+        badge.textContent = badgeTxt;
+
+        const chevron = document.createElement('i');
+        chevron.className = 'ti ti-chevron-' + (expandedId === p.id ? 'up' : 'down');
+        chevron.style.cssText = 'font-size:16px;color:var(--ink-soft)';
+
+        hdrRight.appendChild(badge);
+        hdrRight.appendChild(chevron);
+        hdr.appendChild(hdrLeft);
+        hdr.appendChild(hdrRight);
+        secPrestamo.appendChild(hdr);
+
+        // ── Contenido colapsable ──
+        const content = document.createElement('div');
+        content.style.display = expandedId === p.id ? 'block' : 'none';
 
         // Mini stats
         const ms = document.createElement('div');
         ms.className = 'stats-row';
-        ms.style.cssText = 'background:var(--sand);padding:10px 12px;gap:8px';
+        ms.style.paddingTop = '0';
         ms.innerHTML = `
-          <div class="stat-card"><div class="stat-val" style="font-size:14px">${Fmt.currency(p.monto)}</div><div class="stat-lbl">Capital</div></div>
-          <div class="stat-card"><div class="stat-val" style="font-size:14px">${p.interes}%</div><div class="stat-lbl">Interés</div></div>
-          <div class="stat-card"><div class="stat-val" style="font-size:14px">${pagosHechos}/${p.plazo}</div><div class="stat-lbl">Pagos</div></div>`;
-        cardBody.appendChild(ms);
+          <div class="stat-card"><div class="stat-val">${Fmt.currency(p.monto)}</div><div class="stat-lbl">Capital</div></div>
+          <div class="stat-card"><div class="stat-val">${pagosHechos}/${p.plazo}</div><div class="stat-lbl">Pagos</div></div>
+          <div class="stat-card"><div class="stat-val" style="${saldo > 0 ? 'color:var(--navy)' : 'color:var(--success)'}">${Fmt.currency(saldo)}</div><div class="stat-lbl">Saldo</div></div>`;
+        content.appendChild(ms);
 
-        // Buttons
+        // Botones acción
         const btns = document.createElement('div');
         btns.className = 'btn-row';
-        btns.style.cssText = 'padding:10px 12px 4px;gap:8px';
-        if (p.estado === 'activo') {
-          const b1 = document.createElement('button');
-          b1.className = 'btn btn-primary btn-sm';
-          b1.innerHTML = '<i class="ti ti-plus"></i> Registrar pago';
-          b1.onclick = () => App.navigate('registrarPago', p.id);
-          btns.appendChild(b1);
-        }
-        const b2 = document.createElement('button');
-        b2.className = 'btn btn-secondary btn-sm';
-        b2.innerHTML = '<i class="ti ti-table"></i> Tabla';
-        b2.onclick = () => App.navigate('verTabla', p.id);
-        btns.appendChild(b2);
-        const b3 = document.createElement('button');
-        b3.className = 'btn btn-secondary btn-sm';
-        b3.innerHTML = '<i class="ti ti-file-text"></i> Pagaré';
-        b3.onclick = () => PDF.generarPagare(p, cliente);
-        btns.appendChild(b3);
-        cardBody.appendChild(btns);
+        btns.style.paddingTop = '0';
 
-        // Payment history
+        if (p.estado === 'activo') {
+          const btnPago = document.createElement('button');
+          btnPago.className = 'btn btn-primary btn-sm';
+          btnPago.innerHTML = '<i class="ti ti-plus"></i> Registrar pago';
+          btnPago.onclick = () => App.navigate('registrarPago', p.id);
+          btns.appendChild(btnPago);
+        }
+
+        const btnTabla = document.createElement('button');
+        btnTabla.className = 'btn btn-secondary btn-sm';
+        btnTabla.innerHTML = '<i class="ti ti-table"></i> Tabla';
+        btnTabla.onclick = () => App.navigate('verTabla', p.id);
+        btns.appendChild(btnTabla);
+
+        const btnPagare = document.createElement('button');
+        btnPagare.className = 'btn btn-secondary btn-sm';
+        btnPagare.innerHTML = '<i class="ti ti-file-text"></i> Pagaré';
+        btnPagare.onclick = () => PDF.generarPagare(p, cliente);
+        btns.appendChild(btnPagare);
+        content.appendChild(btns);
+
+        // Historial pagos
         const histTitle = document.createElement('div');
-        histTitle.style.cssText = 'padding:8px 16px 4px;font-size:12px;font-weight:600;color:var(--ink-mid)';
+        histTitle.className = 'section-title';
+        histTitle.style.cssText = 'font-size:12px;padding-top:4px';
         histTitle.textContent = 'Historial de pagos';
-        cardBody.appendChild(histTitle);
+        content.appendChild(histTitle);
 
         const hist = document.createElement('div');
         hist.className = 'payment-list';
-        hist.style.padding = '0 16px 12px';
-        const pagosLista = Store.getPagosByPrestamo(p.id);
+
         if (pagosLista.length === 0) {
-          hist.innerHTML = '<div style="padding:10px 0;font-size:12px;color:var(--ink-soft);text-align:center">Sin pagos aún</div>';
+          hist.innerHTML = `<div style="padding:12px 0;font-size:13px;color:var(--ink-soft);text-align:center">Sin pagos registrados aún</div>`;
         } else {
           [...pagosLista].reverse().forEach((pg, i) => {
             const row = document.createElement('div');
             row.className = 'pmt-row';
-            row.innerHTML = `
-              <div class="pmt-dot paid"></div>
-              <div class="pmt-info">
-                <div class="pmt-date">${Fmt.date(pg.fecha)}</div>
-                <div class="pmt-note">${pg.metodo.charAt(0).toUpperCase()+pg.metodo.slice(1)}${pg.folio?' · '+pg.folio:''}${pg.nota?' · '+pg.nota:''}</div>
-              </div>
-              <div class="pmt-amount">${Fmt.currency(pg.monto)}</div>`;
-            const btnR = document.createElement('button');
-            btnR.style.cssText = 'background:none;border:none;cursor:pointer;padding:4px';
-            btnR.innerHTML = '<i class="ti ti-receipt" style="font-size:16px;color:var(--navy)"></i>';
-            btnR.onclick = () => PDF.generarRecibo(pg, p, cliente, pagosLista.length - i);
-            row.appendChild(btnR);
+
+            const dot = document.createElement('div');
+            dot.className = 'pmt-dot paid';
+
+            const info = document.createElement('div');
+            info.className = 'pmt-info';
+            const dateEl = document.createElement('div');
+            dateEl.className = 'pmt-date';
+            dateEl.textContent = Fmt.date(pg.fecha);
+            const noteEl = document.createElement('div');
+            noteEl.className = 'pmt-note';
+            noteEl.textContent = pg.metodo.charAt(0).toUpperCase()+pg.metodo.slice(1) + (pg.folio ? ' · '+pg.folio : '') + (pg.nota ? ' · '+pg.nota : '');
+            if (pg.comprobanteUrl) {
+              const compSpan = document.createElement('span');
+              compSpan.style.color = 'var(--green)';
+              compSpan.innerHTML = ' · <i class="ti ti-photo" style="font-size:11px"></i> Comprobante';
+              noteEl.appendChild(compSpan);
+            }
+            info.appendChild(dateEl);
+            info.appendChild(noteEl);
+
+            const amt = document.createElement('div');
+            amt.className = 'pmt-amount';
+            amt.textContent = Fmt.currency(pg.monto);
+
+            const btnRecibo = document.createElement('button');
+            btnRecibo.style.cssText = 'background:none;border:none;cursor:pointer;padding:4px';
+            btnRecibo.title = 'Ver comprobante';
+            btnRecibo.innerHTML = '<i class="ti ti-receipt" style="font-size:16px;color:var(--navy)"></i>';
+            btnRecibo.onclick = () => PDF.generarRecibo(pg, p, cliente, pagosLista.length - i);
+
+            row.appendChild(dot);
+            row.appendChild(info);
+            row.appendChild(amt);
+            row.appendChild(btnRecibo);
             hist.appendChild(row);
           });
         }
-        cardBody.appendChild(hist);
-        card.appendChild(cardBody);
+        content.appendChild(hist);
+        secPrestamo.appendChild(content);
 
         // Toggle collapse
-        cardHeader.addEventListener('click', () => {
-          const isOpen = cardBody.style.display !== 'none';
-          ClienteDetalle.expandedLoan = isOpen ? null : p.id;
-          cardBody.style.display = isOpen ? 'none' : 'block';
-          const chevron = cardHeader.querySelector('[id^="chevron-"]');
-          if (chevron) chevron.className = `ti ti-chevron-${isOpen?'down':'up'}`;
+        hdr.addEventListener('click', () => {
+          const isOpen = content.style.display !== 'none';
+          body.querySelectorAll('[data-content]').forEach(c => { c.style.display = 'none'; });
+          body.querySelectorAll('[data-chevron]').forEach(c => { c.className = 'ti ti-chevron-down'; c.style.cssText = 'font-size:16px;color:var(--ink-soft)'; });
+          if (!isOpen) {
+            content.style.display = 'block';
+            expandedId = p.id;
+            chevron.className = 'ti ti-chevron-up';
+          } else {
+            expandedId = null;
+            chevron.className = 'ti ti-chevron-down';
+          }
         });
 
-        secPrestamos.appendChild(card);
+        content.dataset.content = p.id;
+        chevron.dataset.chevron = p.id;
+
+        body.appendChild(secPrestamo);
       });
     }
-    body.appendChild(secPrestamos);
 
-    // New loan button
-    const btnNuevo = document.createElement('div');
-    btnNuevo.style.padding = '8px 16px 16px';
-    const btnN = document.createElement('button');
-    btnN.className = 'btn btn-mauve';
-    btnN.innerHTML = '<i class="ti ti-plus"></i> Nuevo préstamo para este cliente';
-    btnN.onclick = () => App.navigate('nuevoPrestamo', clienteId);
-    btnNuevo.appendChild(btnN);
-    body.appendChild(btnNuevo);
+    // Botón nuevo préstamo
+    const btnNuevoPrestamo = document.createElement('div');
+    btnNuevoPrestamo.style.padding = '12px 16px 16px';
+    const btnNP = document.createElement('button');
+    btnNP.className = 'btn btn-primary';
+    btnNP.innerHTML = '<i class="ti ti-plus"></i> Nuevo préstamo para este cliente';
+    btnNP.onclick = () => App.navigate('nuevoPrestamo', clienteId);
+    btnNuevoPrestamo.appendChild(btnNP);
+    body.appendChild(btnNuevoPrestamo);
 
     el.appendChild(body);
     return el;
@@ -2416,14 +2502,15 @@ const Modal = {
     const solicitudes = Store.getSolicitudesPendientes();
     const el = document.createElement('div');
 
+    // Header
     const header = document.createElement('div');
     header.className = 'page-header';
     header.style.padding = '14px 20px 16px';
     header.innerHTML = `
       <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
       <div style="padding-left:36px">
-        <h1>Solicitudes</h1>
-        <p>${solicitudes.length} pendiente${solicitudes.length !== 1 ? 's' : ''} de revisión</p>
+        <h1>Solicitudes pendientes</h1>
+        <p>${solicitudes.length} por revisar</p>
       </div>`;
     el.appendChild(header);
     el.querySelector('#back-btn').onclick = () => App.navigate('dashboard');
@@ -2432,129 +2519,151 @@ const Modal = {
     body.style.cssText = 'padding:12px 16px 80px';
 
     if (solicitudes.length === 0) {
-      body.innerHTML = `
-        <div class="empty-state" style="padding-top:40px">
-          <i class="ti ti-inbox"></i>
-          <h3>Sin solicitudes pendientes</h3>
-          <p>Cuando un cliente llene el formulario, aparecerá aquí para que lo revises.</p>
-        </div>`;
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.style.paddingTop = '40px';
+      empty.innerHTML = `
+        <i class="ti ti-inbox"></i>
+        <h3>Sin solicitudes pendientes</h3>
+        <p>Cuando un cliente llene el formulario aparecerá aquí para que lo revises y autorices.</p>`;
+      body.appendChild(empty);
     } else {
       solicitudes.forEach(sol => {
+        const interes = getInteresPorQuincenas(sol.quincenas || sol.semanas || 1);
+        const numPagos = getNumPagos(sol.quincenas || sol.semanas || 1, sol.frecuencia || 'semanal');
+        const { total, cuota } = Store.calcPrestamo(sol.monto, interes, numPagos);
+        const fecha = new Date(sol.createdAt).toLocaleDateString('es-MX', {day:'2-digit',month:'short',year:'numeric'});
+
         const card = document.createElement('div');
-        card.style.cssText = 'background:var(--white);border:0.5px solid var(--sand-mid);border-radius:var(--r-lg);padding:14px;margin-bottom:10px';
+        card.style.cssText = 'background:var(--white);border:0.5px solid var(--sand-mid);border-radius:var(--r-lg);padding:16px;margin-bottom:12px';
 
-        const interes = Store.getInteresPorSemanas(sol.semanas);
-        const { total, cuota } = Store.calcPrestamo(sol.monto, interes, sol.semanas);
-        const fecha = new Date(sol.createdAt).toLocaleDateString('es-MX');
+        // Nombre y fecha
+        const cardTop = document.createElement('div');
+        cardTop.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px';
+        cardTop.innerHTML = `
+          <div>
+            <div style="font-size:15px;font-weight:600;color:var(--ink)">${sol.nombre}</div>
+            <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">
+              <i class="ti ti-phone" style="font-size:11px"></i> ${sol.telefono} · ${fecha}
+            </div>
+          </div>
+          <span class="badge badge-warn">Pendiente</span>`;
+        card.appendChild(cardTop);
 
-        card.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-            <div>
-              <div style="font-size:15px;font-weight:600;color:var(--ink)">${sol.nombre}</div>
-              <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${sol.telefono} · ${fecha}</div>
-            </div>
-            <span class="badge badge-warn">Pendiente</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
-            <div style="background:var(--sand);border-radius:var(--r-md);padding:8px;text-align:center">
-              <div style="font-size:14px;font-weight:700;color:var(--navy)">${Fmt.currency(sol.monto)}</div>
-              <div style="font-size:9px;color:var(--ink-soft)">Monto</div>
-            </div>
-            <div style="background:var(--sand);border-radius:var(--r-md);padding:8px;text-align:center">
-              <div style="font-size:14px;font-weight:700;color:var(--navy)">${sol.semanas} sem.</div>
-              <div style="font-size:9px;color:var(--ink-soft)">${interes}% interés</div>
-            </div>
-            <div style="background:var(--sand);border-radius:var(--r-md);padding:8px;text-align:center">
-              <div style="font-size:14px;font-weight:700;color:var(--green-deep)">${Fmt.currency(cuota)}</div>
-              <div style="font-size:9px;color:var(--ink-soft)">Por semana</div>
-            </div>
-          </div>
-          <div style="font-size:11px;color:var(--ink-mid);margin-bottom:10px">
-            <i class="ti ti-map-pin" style="font-size:12px"></i> ${[sol.calle, sol.numExt ? '#'+sol.numExt : '', sol.colonia, sol.ciudad].filter(Boolean).join(', ')}
-          </div>
-          ${sol.firmaClienteUrl ? `
-            <div style="margin-bottom:10px">
-              <div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px">FIRMA DEL CLIENTE</div>
-              <div style="background:var(--sand);border-radius:var(--r-md);padding:8px">
-                <img src="${sol.firmaClienteUrl}" style="height:50px;width:auto;max-width:100%;object-fit:contain"/>
-              </div>
-            </div>` : ''}
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-secondary btn-sm" data-id="${sol.id}" data-action="ver" style="flex:1">
-              <i class="ti ti-eye"></i> Ver detalle
-            </button>
-            <button class="btn btn-danger btn-sm" data-id="${sol.id}" data-action="rechazar" style="flex:1">
-              <i class="ti ti-x"></i> Rechazar
-            </button>
-            <button class="btn btn-success btn-sm" data-id="${sol.id}" data-action="autorizar" style="flex:2">
-              <i class="ti ti-check"></i> Autorizar
-            </button>
-          </div>`;
+        // Stats
+        const statsRow = document.createElement('div');
+        statsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px';
+        const statsData = [
+          { val: Fmt.currency(sol.monto), lbl: 'Monto' },
+          { val: (sol.quincenas || sol.semanas || '?') + ' quinc. ' + interes + '%', lbl: sol.frecuencia || 'semanal' },
+          { val: Fmt.currency(cuota), lbl: 'Por cuota' },
+        ];
+        statsData.forEach(s => {
+          const sc = document.createElement('div');
+          sc.style.cssText = 'background:var(--sand);border-radius:var(--r-md);padding:8px;text-align:center';
+          sc.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--navy)">${s.val}</div><div style="font-size:9px;color:var(--ink-soft)">${s.lbl}</div>`;
+          statsRow.appendChild(sc);
+        });
+        card.appendChild(statsRow);
+
+        // Domicilio
+        const dom = document.createElement('div');
+        dom.className = 'info-box';
+        dom.style.marginBottom = '10px';
+        const domTexto = [sol.calle, sol.numExt ? '#'+sol.numExt : '', sol.colonia, sol.ciudad].filter(Boolean).join(', ');
+        dom.innerHTML = `<i class="ti ti-map-pin"></i><span>${domTexto}</span>`;
+        card.appendChild(dom);
+
+        // Referencia
+        if (sol.refNombre) {
+          const ref = document.createElement('div');
+          ref.className = 'info-box';
+          ref.style.marginBottom = '10px';
+          ref.innerHTML = `<i class="ti ti-user"></i><span>Ref: ${sol.refNombre} (${sol.refParentesco}) · ${sol.refTelefono}</span>`;
+          card.appendChild(ref);
+        }
+
+        // Firma del cliente
+        if (sol.firmaClienteUrl) {
+          const firmaWrap = document.createElement('div');
+          firmaWrap.style.cssText = 'margin-bottom:12px';
+          firmaWrap.innerHTML = `<div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px;font-weight:600">FIRMA DEL CLIENTE</div>`;
+          const firmaBox = document.createElement('div');
+          firmaBox.style.cssText = 'background:var(--sand);border-radius:var(--r-md);padding:8px;text-align:center';
+          const firmaImg = document.createElement('img');
+          firmaImg.src = sol.firmaClienteUrl;
+          firmaImg.style.cssText = 'height:50px;width:auto;max-width:100%;object-fit:contain';
+          firmaBox.appendChild(firmaImg);
+          firmaWrap.appendChild(firmaBox);
+          card.appendChild(firmaWrap);
+        }
+
+        // Botones
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:8px';
+
+        const btnRechazar = document.createElement('button');
+        btnRechazar.className = 'btn btn-danger btn-sm';
+        btnRechazar.style.flex = '1';
+        btnRechazar.innerHTML = '<i class="ti ti-x"></i> Rechazar';
+        btnRechazar.addEventListener('click', async () => {
+          if (!confirm('¿Rechazar esta solicitud?')) return;
+          btnRechazar.disabled = true;
+          await Store.rechazarSolicitud(sol.id);
+          Toast.success('Solicitud rechazada');
+          App.renderView();
+        });
+
+        const btnAutorizar = document.createElement('button');
+        btnAutorizar.className = 'btn btn-success btn-sm';
+        btnAutorizar.style.flex = '2';
+        btnAutorizar.innerHTML = '<i class="ti ti-check"></i> Autorizar préstamo';
+        btnAutorizar.addEventListener('click', async () => {
+          btnAutorizar.disabled = true;
+          btnAutorizar.innerHTML = '<i class="ti ti-loader"></i> Autorizando...';
+          try {
+            const { clienteId, prestamo } = await Store.autorizarSolicitud(sol.id);
+
+            // WhatsApp al cliente
+            if (sol.telefono) {
+              const nombre = sol.nombre.split(' ')[0];
+              const tabla = Store.getTableraAmortizacion(prestamo);
+              const tablaTexto = tabla.map(c =>
+                '  ' + c.num + '. ' + Fmt.date(c.fecha) + ': ' + Fmt.currency(c.monto)
+              ).join('\n');
+              const msg = 'Hola *' + nombre + '* 🎉\n\n'
+                + '¡Tu préstamo ha sido *AUTORIZADO*! 🪙\n\n'
+                + '💰 Monto: ' + Fmt.currency(sol.monto) + '\n'
+                + '📈 Interés: ' + interes + '%\n'
+                + '📅 ' + numPagos + ' pagos ' + (sol.frecuencia || 'semanal') + 'es\n'
+                + '💵 Pago por cuota: ' + Fmt.currency(cuota) + '\n'
+                + '🏦 Total: ' + Fmt.currency(total) + '\n\n'
+                + '📆 *Tabla de pagos:*\n' + tablaTexto + '\n\n'
+                + 'Gracias por confiar en nosotros 😊\n\n'
+                + '*Varito* · Tu dinerito, siempre a la mano';
+              setTimeout(() => window.open(
+                'https://wa.me/52' + sol.telefono + '?text=' + encodeURIComponent(msg), '_blank'
+              ), 400);
+            }
+
+            Toast.success('Préstamo autorizado');
+            App.navigate('clienteDetalle', clienteId);
+          } catch(e) {
+            console.error(e);
+            Toast.error('Error al autorizar. Intenta de nuevo.');
+            btnAutorizar.disabled = false;
+            btnAutorizar.innerHTML = '<i class="ti ti-check"></i> Autorizar préstamo';
+          }
+        });
+
+        btnRow.appendChild(btnRechazar);
+        btnRow.appendChild(btnAutorizar);
+        card.appendChild(btnRow);
         body.appendChild(card);
       });
     }
 
     el.appendChild(body);
-
-    // Event listeners
-    body.querySelectorAll('button[data-action]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = btn.dataset.id;
-        const action = btn.dataset.action;
-        const sol = Store.getSolicitudes().find(s => s.id === id);
-
-        if (action === 'ver') {
-          App.navigate('verSolicitud', id);
-        } else if (action === 'rechazar') {
-          if (!confirm('¿Rechazar esta solicitud?')) return;
-          await Store.rechazarSolicitud(id);
-          Toast.success('Solicitud rechazada');
-          App.renderView();
-        } else if (action === 'autorizar') {
-          btn.disabled = true;
-          btn.innerHTML = '<i class="ti ti-loader"></i> Autorizando...';
-          try {
-            const { clienteId, prestamo } = await Store.autorizarSolicitud(id);
-            const cliente = Store.getCliente(clienteId);
-
-            // WhatsApp al cliente
-            if (sol && cliente && sol.telefono) {
-              const interes = Store.getInteresPorSemanas(sol.semanas);
-              const { total, cuota } = Store.calcPrestamo(sol.monto, interes, sol.semanas);
-              const tabla = Store.getTableraAmortizacion(prestamo);
-              const tablaTexto = tabla.map(c =>
-                `  Semana ${c.num} (${Fmt.date(c.fecha)}): ${Fmt.currency(c.monto)}`
-              ).join('\n');
-
-              const msg = 'Hola *' + sol.nombre.split(' ')[0] + '* 🎉\n\n'
-                + '¡Tu solicitud de préstamo ha sido *AUTORIZADA*! 🪙\n\n'
-                + '📋 *Detalles de tu crédito:*\n'
-                + '💰 Monto: ' + Fmt.currency(sol.monto) + '\n'
-                + '📅 Plazo: ' + sol.semanas + ' semana' + (sol.semanas>1?'s':'') + '\n'
-                + '📈 Interés: ' + interes + '%\n'
-                + '💵 Pago semanal: ' + Fmt.currency(cuota) + '\n'
-                + '🏦 Total a pagar: ' + Fmt.currency(total) + '\n\n'
-                + '📆 *Tabla de pagos:*\n' + tablaTexto + '\n\n'
-                + 'Gracias por confiar en nosotros 😊\n\n'
-                + '*Varito* · Tu dinerito, siempre a la mano';
-
-              setTimeout(() => window.open(
-                'https://wa.me/52' + sol.telefono + '?text=' + encodeURIComponent(msg), '_blank'
-              ), 500);
-            }
-
-            Toast.success('Préstamo autorizado y cliente notificado');
-            App.navigate('clienteDetalle', clienteId);
-          } catch(e) {
-            console.error(e);
-            Toast.error('Error al autorizar');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="ti ti-check"></i> Autorizar';
-          }
-        }
-      });
-    });
-
     return el;
   }
 };

@@ -124,6 +124,7 @@ let quincenas = 0;
 let frecuencia = 'semanal';
 let firmaUrl = null;
 let fotoIneUrl = null;
+let fotoIneBackUrl = null;
 let fotoDomUrl = null;
 let hasDrawn = false;
 
@@ -249,17 +250,47 @@ function s3(c) {
   appendLbl(sec, 'Documentos de identidad');
   appendInfo(sec, 'Adjunta una foto clara de tu INE y un comprobante de domicilio reciente (máx. 3 meses).');
 
-  // INE
+  // INE - front and back
   const ineField = document.createElement('div');
   ineField.className = 'field';
   const ineLabel = document.createElement('label');
   ineLabel.textContent = 'Foto del INE *';
   ineField.appendChild(ineLabel);
-  const ineZone = createPhotoZone('ti-id', 'Fotografiar o adjuntar INE', 'Ambos lados si es posible', 'ine-file');
-  const inePreview = createPhotoPreview('ine-prev', 'ine-img', 'ine-rm');
-  if(fotoIneUrl){ ineZone.style.display='none'; inePreview.style.display='block'; inePreview.querySelector('img').src=fotoIneUrl; }
-  ineField.appendChild(ineZone);
-  ineField.appendChild(inePreview);
+
+  const ineGrid = document.createElement('div');
+  ineGrid.className = 'grid2';
+
+  // INE Front
+  const ineFrontWrap = document.createElement('div');
+  ineFrontWrap.style.cssText = 'display:flex;flex-direction:column;gap:4px';
+  const ineFrontLbl = document.createElement('div');
+  ineFrontLbl.style.cssText = 'font-size:10px;font-weight:600;color:var(--ink-soft);text-align:center';
+  ineFrontLbl.textContent = 'PARTE DELANTERA';
+  const ineZoneFront = createPhotoZone('ti-id', 'Frente', 'Foto del frente', 'ine-front-file');
+  ineZoneFront.style.cssText += ';padding:12px 8px';
+  const inePreviewFront = createPhotoPreview('ine-front-prev', 'ine-front-img', 'ine-front-rm');
+  if(fotoIneUrl){ ineZoneFront.style.display='none'; inePreviewFront.style.display='block'; inePreviewFront.querySelector('img').src=fotoIneUrl; }
+  ineFrontWrap.appendChild(ineFrontLbl);
+  ineFrontWrap.appendChild(ineZoneFront);
+  ineFrontWrap.appendChild(inePreviewFront);
+
+  // INE Back
+  const ineBackWrap = document.createElement('div');
+  ineBackWrap.style.cssText = 'display:flex;flex-direction:column;gap:4px';
+  const ineBackLbl = document.createElement('div');
+  ineBackLbl.style.cssText = 'font-size:10px;font-weight:600;color:var(--ink-soft);text-align:center';
+  ineBackLbl.textContent = 'PARTE TRASERA';
+  const ineZoneBack = createPhotoZone('ti-id', 'Reverso', 'Foto del reverso', 'ine-back-file');
+  ineZoneBack.style.cssText += ';padding:12px 8px';
+  const inePreviewBack = createPhotoPreview('ine-back-prev', 'ine-back-img', 'ine-back-rm');
+  if(fotoIneBackUrl){ ineZoneBack.style.display='none'; inePreviewBack.style.display='block'; inePreviewBack.querySelector('img').src=fotoIneBackUrl; }
+  ineBackWrap.appendChild(ineBackLbl);
+  ineBackWrap.appendChild(ineZoneBack);
+  ineBackWrap.appendChild(inePreviewBack);
+
+  ineGrid.appendChild(ineFrontWrap);
+  ineGrid.appendChild(ineBackWrap);
+  ineField.appendChild(ineGrid);
   sec.appendChild(ineField);
 
   // Domicilio
@@ -288,13 +319,16 @@ function s3(c) {
   c.appendChild(sec);
 
   // Photo handlers
-  setupPhoto('ine-file', ineZone, inePreview, 'ine-img', v => fotoIneUrl = v);
+  setupPhoto('ine-front-file', ineZoneFront, inePreviewFront, 'ine-front-img', v => fotoIneUrl = v);
+  setupPhoto('ine-back-file', ineZoneBack, inePreviewBack, 'ine-back-img', v => fotoIneBackUrl = v);
   setupPhoto('dom-file', domZone, domPreview, 'dom-img', v => fotoDomUrl = v);
-  document.getElementById('ine-rm').onclick = () => { fotoIneUrl=null; inePreview.style.display='none'; ineZone.style.display='block'; };
+  document.getElementById('ine-front-rm').onclick = () => { fotoIneUrl=null; inePreviewFront.style.display='none'; ineZoneFront.style.display='block'; };
+  document.getElementById('ine-back-rm').onclick = () => { fotoIneBackUrl=null; inePreviewBack.style.display='none'; ineZoneBack.style.display='block'; };
   document.getElementById('dom-rm').onclick = () => { fotoDomUrl=null; domPreview.style.display='none'; domZone.style.display='block'; };
 
   btnNext.onclick = () => {
-    if(!fotoIneUrl){showErr('err3','Adjunta una foto de tu INE.'); return;}
+    if(!fotoIneUrl){showErr('err3','Adjunta la foto del frente de tu INE.'); return;}
+    if(!fotoIneBackUrl){showErr('err3','Adjunta la foto del reverso de tu INE.'); return;}
     if(!fotoDomUrl){showErr('err3','Adjunta un comprobante de domicilio.'); return;}
     setStep(4); render();
   };
@@ -508,11 +542,12 @@ function s5(c) {
     btnEnviar.disabled=true;
     btnEnviar.innerHTML='<i class="ti ti-loader"></i> Enviando...';
     try {
-      firmaUrl = canvas.toDataURL('image/png');
+      firmaUrl = await compressImage(canvas.toDataURL('image/png'), 600, 0.85);
       await db.collection('solicitudes').add({
         ...fd,
         firmaClienteUrl: firmaUrl,
         fotoIneUrl: fotoIneUrl,
+        fotoIneBackUrl: fotoIneBackUrl,
         fotoDomicilioUrl: fotoDomUrl,
         estado: 'pendiente',
         createdAt: new Date().toISOString(),
@@ -573,8 +608,32 @@ function setupPhoto(fileId,zone,preview,imgId,setter){
   fileInput.addEventListener('change',e=>{
     const file=e.target.files[0];if(!file)return;
     const reader=new FileReader();
-    reader.onload=ev=>{setter(ev.target.result);document.getElementById(imgId).src=ev.target.result;preview.style.display='block';zone.style.display='none';};
+    reader.onload=async ev=>{
+      // Compress to max 800px wide, 0.7 quality (~50-80KB)
+      const compressed = await compressImage(ev.target.result, 800, 0.7);
+      setter(compressed);
+      document.getElementById(imgId).src=compressed;
+      preview.style.display='block';
+      zone.style.display='none';
+    };
     reader.readAsDataURL(file);
+  });
+}
+
+// ── Image compression ──
+function compressImage(dataUrl, maxWidth, quality) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width, h = img.height;
+      if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = dataUrl;
   });
 }
 

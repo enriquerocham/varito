@@ -2759,6 +2759,8 @@ const Modal = {
     const initCanvas = () => {
       canvas.width = canvas.offsetWidth;
       ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.strokeStyle = '#1A2340';
       ctx.lineWidth = 2.5;
       ctx.lineCap = 'round';
@@ -2816,7 +2818,8 @@ const Modal = {
 
     btnBorrar.onclick = () => {
       if (!ctx) initCanvas();
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       hasDrawn = false;
     };
 

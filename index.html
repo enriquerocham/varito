@@ -2467,35 +2467,216 @@ const Modal = {
     return el;
   }
 };
-</script><script>            if (sol.telefono) {
+</script><script>const Solicitudes = {
+  render() {
+    const solicitudes = Store.getSolicitudesPendientes();
+    const el = document.createElement('div');
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'page-header';
+    header.style.padding = '14px 20px 16px';
+    const backBtn = document.createElement('button');
+    backBtn.className = 'back-btn';
+    backBtn.innerHTML = '<i class="ti ti-arrow-left"></i>';
+    backBtn.onclick = () => App.navigate('dashboard');
+    header.appendChild(backBtn);
+    const hdrText = document.createElement('div');
+    hdrText.style.paddingLeft = '36px';
+    hdrText.innerHTML = '<h1>Solicitudes pendientes</h1><p>' + solicitudes.length + ' por revisar</p>';
+    header.appendChild(hdrText);
+    el.appendChild(header);
+
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:12px 16px 80px';
+
+    if (solicitudes.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.style.paddingTop = '40px';
+      empty.innerHTML = '<i class="ti ti-inbox"></i><h3>Sin solicitudes pendientes</h3><p>Cuando un cliente llene el formulario aparecerá aquí para que lo revises y autorices.</p>';
+      body.appendChild(empty);
+    } else {
+      solicitudes.forEach(sol => {
+        const interes = getInteresPorQuincenas(sol.quincenas || sol.semanas || 1);
+        const numPagos = getNumPagos(sol.quincenas || sol.semanas || 1, sol.frecuencia || 'semanal');
+        const { total, cuota } = Store.calcPrestamo(sol.monto, interes, numPagos);
+        const fechaObj = new Date(sol.createdAt);
+        const fecha = fechaObj.toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'});
+
+        const card = document.createElement('div');
+        card.style.cssText = 'background:var(--white);border:0.5px solid var(--sand-mid);border-radius:var(--r-lg);padding:16px;margin-bottom:12px';
+
+        // Top row: nombre + badge
+        const topRow = document.createElement('div');
+        topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px';
+        const nameDiv = document.createElement('div');
+        nameDiv.innerHTML = '<div style="font-size:15px;font-weight:600;color:var(--ink)">' + sol.nombre + '</div>'
+          + '<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">'
+          + '<i class="ti ti-phone" style="font-size:11px"></i> ' + sol.telefono + ' · ' + fecha + '</div>';
+        const badgeEl = document.createElement('span');
+        badgeEl.className = 'badge badge-warn';
+        badgeEl.textContent = 'Pendiente';
+        topRow.appendChild(nameDiv);
+        topRow.appendChild(badgeEl);
+        card.appendChild(topRow);
+
+        // Stats grid
+        const statsGrid = document.createElement('div');
+        statsGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px';
+        const statsData = [
+          { val: Fmt.currency(sol.monto), lbl: 'Monto solicitado' },
+          { val: (sol.quincenas || sol.semanas || '?') + ' quinc. · ' + interes + '%', lbl: (sol.frecuencia || 'semanal') },
+          { val: Fmt.currency(cuota), lbl: 'Por cuota' },
+        ];
+        statsData.forEach(s => {
+          const sc = document.createElement('div');
+          sc.style.cssText = 'background:var(--sand);border-radius:var(--r-md);padding:8px;text-align:center';
+          sc.innerHTML = '<div style="font-size:12px;font-weight:700;color:var(--navy)">' + s.val + '</div>'
+            + '<div style="font-size:9px;color:var(--ink-soft);margin-top:2px">' + s.lbl + '</div>';
+          statsGrid.appendChild(sc);
+        });
+        card.appendChild(statsGrid);
+
+        // Domicilio
+        const domTexto = [sol.calle, sol.numExt ? '#'+sol.numExt : '', sol.colonia, sol.ciudad].filter(Boolean).join(', ');
+        if (domTexto) {
+          const domBox = document.createElement('div');
+          domBox.className = 'info-box';
+          domBox.style.marginBottom = '8px';
+          domBox.innerHTML = '<i class="ti ti-map-pin"></i><span>' + domTexto + '</span>';
+          card.appendChild(domBox);
+        }
+
+        // Referencia
+        if (sol.refNombre) {
+          const refBox = document.createElement('div');
+          refBox.className = 'info-box';
+          refBox.style.marginBottom = '8px';
+          refBox.innerHTML = '<i class="ti ti-user"></i><span>Ref: ' + sol.refNombre
+            + (sol.refParentesco ? ' (' + sol.refParentesco + ')' : '')
+            + (sol.refTelefono ? ' · ' + sol.refTelefono : '') + '</span>';
+          card.appendChild(refBox);
+        }
+
+        // Fotos INE
+        if (sol.fotoIneUrl || sol.fotoIneBackUrl) {
+          const fotosWrap = document.createElement('div');
+          fotosWrap.style.cssText = 'margin-bottom:10px';
+          const fotosLbl = document.createElement('div');
+          fotosLbl.style.cssText = 'font-size:10px;color:var(--ink-soft);font-weight:600;margin-bottom:6px';
+          fotosLbl.textContent = 'DOCUMENTOS ADJUNTOS';
+          fotosWrap.appendChild(fotosLbl);
+          const fotosGrid = document.createElement('div');
+          fotosGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr ' + (sol.fotoDomicilioUrl ? '1fr' : '') + ';gap:6px';
+          if (sol.fotoIneUrl) {
+            const f = document.createElement('div');
+            f.style.cssText = 'text-align:center';
+            f.innerHTML = '<div style="font-size:9px;color:var(--ink-soft);margin-bottom:3px">INE Frente</div>'
+              + '<img src="' + sol.fotoIneUrl + '" style="width:100%;height:60px;object-fit:cover;border-radius:var(--r-md);border:0.5px solid var(--sand-mid)"/>';
+            fotosGrid.appendChild(f);
+          }
+          if (sol.fotoIneBackUrl) {
+            const f = document.createElement('div');
+            f.style.cssText = 'text-align:center';
+            f.innerHTML = '<div style="font-size:9px;color:var(--ink-soft);margin-bottom:3px">INE Reverso</div>'
+              + '<img src="' + sol.fotoIneBackUrl + '" style="width:100%;height:60px;object-fit:cover;border-radius:var(--r-md);border:0.5px solid var(--sand-mid)"/>';
+            fotosGrid.appendChild(f);
+          }
+          if (sol.fotoDomicilioUrl) {
+            const f = document.createElement('div');
+            f.style.cssText = 'text-align:center';
+            f.innerHTML = '<div style="font-size:9px;color:var(--ink-soft);margin-bottom:3px">Domicilio</div>'
+              + '<img src="' + sol.fotoDomicilioUrl + '" style="width:100%;height:60px;object-fit:cover;border-radius:var(--r-md);border:0.5px solid var(--sand-mid)"/>';
+            fotosGrid.appendChild(f);
+          }
+          fotosWrap.appendChild(fotosGrid);
+          card.appendChild(fotosWrap);
+        }
+
+        // Firma
+        if (sol.firmaClienteUrl) {
+          const firmaWrap = document.createElement('div');
+          firmaWrap.style.cssText = 'margin-bottom:12px;background:var(--sand);border-radius:var(--r-md);padding:8px';
+          firmaWrap.innerHTML = '<div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px;font-weight:600">FIRMA DEL CLIENTE</div>';
+          const firmaImg = document.createElement('img');
+          firmaImg.src = sol.firmaClienteUrl;
+          firmaImg.style.cssText = 'height:50px;width:auto;max-width:100%;object-fit:contain;display:block';
+          firmaWrap.appendChild(firmaImg);
+          card.appendChild(firmaWrap);
+        }
+
+        // Botones
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:8px';
+
+        const btnRechazar = document.createElement('button');
+        btnRechazar.className = 'btn btn-danger btn-sm';
+        btnRechazar.style.flex = '1';
+        btnRechazar.innerHTML = '<i class="ti ti-x"></i> Rechazar';
+        btnRechazar.addEventListener('click', async () => {
+          if (!confirm('¿Rechazar esta solicitud?')) return;
+          btnRechazar.disabled = true;
+          await Store.rechazarSolicitud(sol.id);
+          Toast.success('Solicitud rechazada');
+          if (sol.telefono) {
+            const nombre = sol.nombre.split(' ')[0];
+            const msg = ['Hola ' + nombre + ', gracias por tu solicitud.',
+              '', 'En esta ocasion no fue posible aprobar tu solicitud de prestamo.',
+              '', 'Te invitamos a intentarlo nuevamente. Estamos para servirte.',
+              '', '*Varito* - Tu dinerito, siempre a la mano'].join('\n');
+            setTimeout(() => window.open('https://wa.me/52' + sol.telefono + '?text=' + encodeURIComponent(msg), '_blank'), 400);
+          }
+          App.renderView();
+        });
+
+        const btnAutorizar = document.createElement('button');
+        btnAutorizar.className = 'btn btn-success btn-sm';
+        btnAutorizar.style.flex = '2';
+        btnAutorizar.innerHTML = '<i class="ti ti-check"></i> Autorizar';
+        btnAutorizar.addEventListener('click', async () => {
+          btnAutorizar.disabled = true;
+          btnAutorizar.innerHTML = '<i class="ti ti-loader"></i> Autorizando...';
+          try {
+            const { clienteId, prestamo } = await Store.autorizarSolicitud(sol.id);
+            if (sol.telefono) {
               const nombre = sol.nombre.split(' ')[0];
               const tabla = Store.getTableraAmortizacion(prestamo);
-              const tablaTexto = tabla.map(c =>
-                c.num + '. ' + Fmt.date(c.fecha) + ': ' + Fmt.currency(c.monto)
-              ).join('\n');
-              const msg = [
-                'Hola ' + nombre + ', felicidades!',
-                '',
-                'Tu prestamo ha sido *AUTORIZADO* \u{1FA99}',
-                '',
-                '*Monto:* ' + Fmt.currency(sol.monto),
+              const tablaTexto = tabla.map(c => c.num + '. ' + Fmt.date(c.fecha) + ': ' + Fmt.currency(c.monto)).join('\n');
+              const msg = ['Hola ' + nombre + ', felicidades!',
+                '', 'Tu prestamo ha sido *AUTORIZADO*',
+                '', '*Monto:* ' + Fmt.currency(sol.monto),
                 '*Interes:* ' + interes + '%',
-                '*Pagos:* ' + numPagos + ' ' + (sol.frecuencia||'semanal') + 'es',
+                '*Pagos:* ' + numPagos + ' ' + (sol.frecuencia || 'semanal') + 'es',
                 '*Por cuota:* ' + Fmt.currency(cuota),
                 '*Total a pagar:* ' + Fmt.currency(total),
-                '',
-                '*Tu tabla de pagos:*',
-                tablaTexto,
-                '',
-                'Gracias por confiar en nosotros',
-                '',
-                '*Varito* - Tu dinerito, siempre a la mano'
-              ].join('\n');
-              setTimeout(() => window.open(
-                'https://wa.me/52' + sol.telefono + '?text=' + encodeURIComponent(msg), '_blank'
-              ), 400);
+                '', '*Tu tabla de pagos:*', tablaTexto,
+                '', 'Gracias por confiar en nosotros',
+                '', '*Varito* - Tu dinerito, siempre a la mano'].join('\n');
+              setTimeout(() => window.open('https://wa.me/52' + sol.telefono + '?text=' + encodeURIComponent(msg), '_blank'), 400);
             }
-            </script><script>const Configuracion = {
+            Toast.success('Prestamo autorizado');
+            App.navigate('clienteDetalle', clienteId);
+          } catch(e) {
+            console.error(e);
+            Toast.error('Error al autorizar. Intenta de nuevo.');
+            btnAutorizar.disabled = false;
+            btnAutorizar.innerHTML = '<i class="ti ti-check"></i> Autorizar';
+          }
+        });
+
+        btnRow.appendChild(btnRechazar);
+        btnRow.appendChild(btnAutorizar);
+        card.appendChild(btnRow);
+        body.appendChild(card);
+      });
+    }
+
+    el.appendChild(body);
+    return el;
+  }
+};
+</script><script>const Configuracion = {
   render() {
     const firmaExistente = Store.getFirmaYaretzi();
     const el = document.createElement('div');

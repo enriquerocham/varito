@@ -217,100 +217,181 @@ function renderStep2(c) {
 function renderStep3(c) {
   const s = document.createElement('div');
   s.className = 'section';
-  s.innerHTML = `
-    <div class="section-lbl">Tu solicitud de crédito</div>
-    <div class="info-box"><i class="ti ti-cash"></i><span>Los clientes nuevos pueden solicitar hasta <strong>$2,000</strong>. El interés depende del plazo elegido.</span></div>
-    <div class="field">
-      <label>Monto a solicitar *</label>
-      <input id="monto" type="number" placeholder="$0.00" min="100" max="2000" step="100" value="${formData.monto||''}"/>
-    </div>
-    <div class="field">
-      <label>¿Cuántas semanas para pagar? *</label>
-      <div class="semanas-grid" id="semanas-grid">
-        ${[1,2,3,4,5,6].map(s => `<button class="semana-btn${quincenas===s?' active':''}" data-q="${s}">${s}</button>`).join('')}
-      </div>
-      <div class="interes-badge" id="interes-badge">${semanas ? semanas+' semana'+(semanas>1?'s':'')+' → '+getInteresPorQuincenas(semanas)+'% de interés' : ''}</div>
-    </div>
-    <div class="calc-box" id="calc-box">
-      <div class="calc-row"><span class="calc-key">Capital solicitado</span><span class="calc-val" id="c-capital">—</span></div>
-      <div class="calc-row"><span class="calc-key">Interés total</span><span class="calc-val" id="c-interes">—</span></div>
-      <div class="calc-row"><span class="calc-key">Total a pagar</span><span class="calc-val" id="c-total" style="font-size:16px;color:var(--navy)">—</span></div>
-      <div class="calc-row"><span class="calc-key">Pago semanal</span><span class="calc-val" id="c-cuota" style="font-size:16px;color:var(--green-deep)">—</span></div>
-    </div>
-    <div id="tabla-wrap" style="display:none">
-      <div style="font-size:11px;font-weight:600;color:var(--ink-mid);margin-bottom:6px">Tabla de pagos</div>
-      <div class="amort-wrap">
-        <table class="amort-table">
-          <thead><tr><th>#</th><th>Fecha</th><th>Monto</th><th>Capital</th><th>Interés</th></tr></thead>
-          <tbody id="tabla-body"></tbody>
-        </table>
-      </div>
-    </div>
-    <p id="err3" class="error-msg"></p>
-    <div class="btn-row">
-      <button class="btn btn-secondary" id="btn3back" style="flex:1"><i class="ti ti-arrow-left"></i> Atrás</button>
-      <button class="btn btn-primary" id="btn3" style="flex:2">Siguiente <i class="ti ti-arrow-right"></i></button>
-    </div>`;
   c.appendChild(s);
 
-  if (semanas) setTimeout(() => updateCalc3(), 50);
+  // Title
+  const lbl = document.createElement('div');
+  lbl.className = 'section-lbl';
+  lbl.textContent = 'Tu solicitud de crédito';
+  s.appendChild(lbl);
 
-  document.querySelectorAll('.semana-btn').forEach(btn => {
+  // Info
+  const info = document.createElement('div');
+  info.className = 'info-box';
+  info.innerHTML = '<i class="ti ti-cash"></i><span>Clientes nuevos: máximo <strong>$2,000</strong>. El interés depende de las quincenas elegidas.</span>';
+  s.appendChild(info);
+
+  // Monto
+  const fMonto = document.createElement('div');
+  fMonto.className = 'field';
+  fMonto.innerHTML = '<label>Monto a solicitar *</label>';
+  const inputMonto = document.createElement('input');
+  inputMonto.id = 'monto'; inputMonto.type = 'number';
+  inputMonto.placeholder = '$0.00'; inputMonto.min = '100'; inputMonto.max = '2000'; inputMonto.step = '100';
+  inputMonto.value = formData.monto || '';
+  fMonto.appendChild(inputMonto);
+  s.appendChild(fMonto);
+
+  // Frecuencia
+  const fFrec = document.createElement('div');
+  fFrec.className = 'field';
+  fFrec.innerHTML = '<label>Frecuencia de pago</label>';
+  const frecGrid = document.createElement('div');
+  frecGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px';
+  ['semanal','quincenal'].forEach(f => {
+    const btn = document.createElement('button');
+    btn.className = 'semana-btn' + (frecuencia === f ? ' active' : '');
+    btn.dataset.frec = f;
+    btn.textContent = f.charAt(0).toUpperCase() + f.slice(1);
     btn.onclick = () => {
-      quincenas = parseInt(btn.dataset.q);
-      document.querySelectorAll('.semana-btn').forEach(b => b.classList.remove('active'));
+      frecuencia = f;
+      frecGrid.querySelectorAll('[data-frec]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      const interes = getInteresPorQuincenas(semanas);
-      const badge = document.getElementById('interes-badge');
-      badge.textContent = semanas+' semana'+(semanas>1?'s':'')+' → '+interes+'% de interés';
+      updateCalc3();
+    };
+    frecGrid.appendChild(btn);
+  });
+  fFrec.appendChild(frecGrid);
+  s.appendChild(fFrec);
+
+  // Quincenas
+  const fQuinc = document.createElement('div');
+  fQuinc.className = 'field';
+  fQuinc.innerHTML = '<label>Número de quincenas *</label>';
+  const quincGrid = document.createElement('div');
+  quincGrid.className = 'semanas-grid';
+  [1,2,3,4,5,6].forEach(q => {
+    const btn = document.createElement('button');
+    btn.className = 'semana-btn' + (quincenas === q ? ' active' : '');
+    btn.dataset.q = q;
+    btn.innerHTML = '<span style="display:block">' + q + '</span><span style="font-size:9px;font-weight:400">' + (q<=2?'30%':q<=4?'40%':'50%') + '</span>';
+    btn.onclick = () => {
+      quincenas = q;
+      quincGrid.querySelectorAll('[data-q]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const interes = getInteresPorQuincenas(quincenas);
+      badge.textContent = quincenas + ' quincena' + (quincenas>1?'s':'') + ' → ' + interes + '% de interés';
       badge.style.display = 'block';
       updateCalc3();
     };
+    quincGrid.appendChild(btn);
   });
+  fQuinc.appendChild(quincGrid);
+  const badge = document.createElement('div');
+  badge.className = 'interes-badge';
+  badge.style.display = quincenas ? 'block' : 'none';
+  if (quincenas) badge.textContent = quincenas + ' quincena' + (quincenas>1?'s':'') + ' → ' + getInteresPorQuincenas(quincenas) + '% de interés';
+  fQuinc.appendChild(badge);
+  s.appendChild(fQuinc);
 
-  document.getElementById('monto').addEventListener('input', updateCalc3);
+  // Calc box
+  const calcBox = document.createElement('div');
+  calcBox.className = 'calc-box';
+  calcBox.id = 'calc-box';
+  calcBox.style.display = 'none';
+  calcBox.innerHTML = `
+    <div class="calc-row"><span class="calc-key">Capital</span><span class="calc-val" id="c-capital">—</span></div>
+    <div class="calc-row"><span class="calc-key">Interés total</span><span class="calc-val" id="c-interes">—</span></div>
+    <div class="calc-row"><span class="calc-key">Número de pagos</span><span class="calc-val" id="c-pagos">—</span></div>
+    <div class="calc-row"><span class="calc-key">Total a pagar</span><span class="calc-val" id="c-total" style="font-size:16px;color:var(--navy)">—</span></div>
+    <div class="calc-row"><span class="calc-key" id="c-cuota-lbl">Pago por cuota</span><span class="calc-val" id="c-cuota" style="font-size:16px;color:var(--green-deep)">—</span></div>`;
+  s.appendChild(calcBox);
+
+  // Tabla
+  const tablaWrap = document.createElement('div');
+  tablaWrap.id = 'tabla-wrap';
+  tablaWrap.style.display = 'none';
+  tablaWrap.innerHTML = `
+    <div style="font-size:11px;font-weight:600;color:var(--ink-mid);margin-bottom:6px">Tabla de pagos</div>
+    <div class="amort-wrap">
+      <table class="amort-table">
+        <thead><tr><th>#</th><th>Fecha</th><th>Monto</th><th>Capital</th><th>Interés</th></tr></thead>
+        <tbody id="tabla-body"></tbody>
+      </table>
+    </div>`;
+  s.appendChild(tablaWrap);
+
+  // Error
+  const err = document.createElement('p');
+  err.id = 'err3'; err.className = 'error-msg';
+  s.appendChild(err);
+
+  // Buttons
+  const btnRow = document.createElement('div');
+  btnRow.className = 'btn-row';
+  const btnBack = document.createElement('button');
+  btnBack.className = 'btn btn-secondary'; btnBack.style.flex = '1';
+  btnBack.innerHTML = '<i class="ti ti-arrow-left"></i> Atrás';
+  btnBack.onclick = () => { setStep(2); render(); };
+  const btnNext = document.createElement('button');
+  btnNext.className = 'btn btn-primary'; btnNext.style.flex = '2';
+  btnNext.innerHTML = 'Siguiente <i class="ti ti-arrow-right"></i>';
+  btnNext.id = 'btn3';
+  btnRow.appendChild(btnBack);
+  btnRow.appendChild(btnNext);
+  s.appendChild(btnRow);
+
+  // Attach monto listener
+  inputMonto.addEventListener('input', updateCalc3);
+  if (quincenas) setTimeout(updateCalc3, 50);
 
   function updateCalc3() {
-    const monto = parseFloat(document.getElementById('monto').value);
-    const box = document.getElementById('calc-box');
-    const tablaWrap = document.getElementById('tabla-wrap');
-    if (!monto || !semanas || monto < 100) { box.style.display='none'; tablaWrap.style.display='none'; return; }
-    const interes = getInteresPorQuincenas(semanas);
+    const monto = parseFloat(inputMonto.value);
+    if (!monto || !quincenas || monto < 100) {
+      calcBox.style.display = 'none'; tablaWrap.style.display = 'none'; return;
+    }
+    const interes = getInteresPorQuincenas(quincenas);
+    const numPagos = getNumPagos(quincenas, frecuencia);
+    const dias = getDias(frecuencia);
     const total = Math.round(monto * (1 + interes/100) * 100) / 100;
-    const cuota = Math.round((total / semanas) * 100) / 100;
+    const cuota = Math.round((total / numPagos) * 100) / 100;
     const intTotal = total - monto;
-    const intPorCuota = Math.round((intTotal / semanas) * 100) / 100;
-    const capPorCuota = Math.round((monto / semanas) * 100) / 100;
+    const intPorCuota = Math.round((intTotal / numPagos) * 100) / 100;
+    const capPorCuota = Math.round((monto / numPagos) * 100) / 100;
+    const frecLabel = frecuencia === 'semanal' ? 'semanal' : 'quincenal';
     document.getElementById('c-capital').textContent = fmtCurrency(monto);
-    document.getElementById('c-interes').textContent = fmtCurrency(intTotal)+' ('+interes+'%)';
+    document.getElementById('c-interes').textContent = fmtCurrency(intTotal) + ' (' + interes + '%)';
+    document.getElementById('c-pagos').textContent = numPagos + ' pagos ' + frecLabel + 'es';
     document.getElementById('c-total').textContent = fmtCurrency(total);
+    document.getElementById('c-cuota-lbl').textContent = 'Pago ' + frecLabel;
     document.getElementById('c-cuota').textContent = fmtCurrency(cuota);
-    box.style.display = 'block';
+    calcBox.style.display = 'block';
     const tbody = document.getElementById('tabla-body');
     tbody.innerHTML = '';
     let saldo = total;
     const hoy = today();
-    for (let i=1; i<=semanas; i++) {
-      const f = new Date(hoy+'T00:00:00'); f.setDate(f.getDate()+7*i);
-      saldo = Math.max(0, Math.round((saldo-cuota)*100)/100);
+    for (let i = 1; i <= numPagos; i++) {
+      const f = new Date(hoy + 'T00:00:00');
+      f.setDate(f.getDate() + dias * i);
+      saldo = Math.max(0, Math.round((saldo - cuota) * 100) / 100);
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i}</td><td>${fmtDate(f.toISOString().split('T')[0])}</td><td>${fmtCurrency(cuota)}</td><td>${fmtCurrency(capPorCuota)}</td><td>${fmtCurrency(intPorCuota)}</td>`;
+      tr.innerHTML = '<td>'+i+'</td><td>'+fmtDate(f.toISOString().split("T")[0])+'</td><td>'+fmtCurrency(cuota)+'</td><td>'+fmtCurrency(capPorCuota)+'</td><td>'+fmtCurrency(intPorCuota)+'</td>';
       tbody.appendChild(tr);
     }
     tablaWrap.style.display = 'block';
   }
 
-
-  document.getElementById('btn3back').onclick = () => { setStep(2); render(); };
   document.getElementById('btn3').onclick = () => {
-    const monto = parseFloat(document.getElementById('monto').value);
-    const err = document.getElementById('err3');
+    const monto = parseFloat(inputMonto.value);
     if (!monto || monto < 100) { err.textContent='Ingresa un monto válido (mínimo $100).'; err.style.display='block'; return; }
     if (monto > 2000) { err.textContent='El monto máximo para nuevos clientes es $2,000.'; err.style.display='block'; return; }
-    if (!quincenas) { err.textContent='Selecciona el número de semanas.'; err.style.display='block'; return; }
+    if (!quincenas) { err.textContent='Selecciona el número de quincenas.'; err.style.display='block'; return; }
     formData.monto = monto;
-    formData.semanas = semanas;
-    formData.interes = getInteresPorQuincenas(semanas);
+    formData.quincenas = quincenas;
+    formData.semanas = quincenas;
+    formData.frecuencia = frecuencia;
+    formData.interes = getInteresPorQuincenas(quincenas);
+    formData.plazo = getNumPagos(quincenas, frecuencia);
     setStep(4); render();
   };
 }
@@ -407,4 +488,3 @@ render();
 </script>
 </body>
 </html>
-

@@ -1000,20 +1000,27 @@ const Modal = {
       qaRow.appendChild(btn);
     });
 
-    // Solicitudes badge button if pending
+    // Solicitudes button - always visible
+    const btnSol = document.createElement('button');
+    btnSol.className = 'qa-btn';
+    btnSol.style.position = 'relative';
+    const solIcon = document.createElement('div');
+    solIcon.className = 'qa-icon';
+    solIcon.style.cssText = 'background:#FFF3CD;color:#8B6914;position:relative';
+    solIcon.innerHTML = '<i class="ti ti-inbox"></i>';
     if (stats.solicitudesPendientes > 0) {
-      const btnSol = document.createElement('button');
-      btnSol.className = 'qa-btn';
-      btnSol.style.position = 'relative';
-      btnSol.innerHTML = `
-        <div class="qa-icon" style="background:#FFF3CD;color:#8B6914;position:relative">
-          <i class="ti ti-inbox"></i>
-          <span style="position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">${stats.solicitudesPendientes}</span>
-        </div>
-        <span class="qa-label">Solicitudes</span>`;
-      btnSol.onclick = () => App.navigate('solicitudes');
-      qaRow.appendChild(btnSol);
+      const badge = document.createElement('span');
+      badge.style.cssText = 'position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center';
+      badge.textContent = stats.solicitudesPendientes;
+      solIcon.appendChild(badge);
     }
+    const solLbl = document.createElement('span');
+    solLbl.className = 'qa-label';
+    solLbl.textContent = 'Solicitudes';
+    btnSol.appendChild(solIcon);
+    btnSol.appendChild(solLbl);
+    btnSol.onclick = () => App.navigate('solicitudes');
+    qaRow.appendChild(btnSol);
     scroll.appendChild(qaRow);
 
     // Section: Clientes activos

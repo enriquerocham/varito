@@ -278,10 +278,37 @@ body {{ -webkit-tap-highlight-color: transparent; }}
 <div id="app"></div>
 <script>const ACREEDORA = 'Yaretzi Dalet Gutiérrez Castañeda';
 const APP_NAME = 'Varito';
-const INTERES_DEFAULT = 30;
 const PENALIZACION_DIARIA = 10;
 
-// ── Firebase ──────────────────────────────────────────────
+// Interés por quincenas (1-2=30%, 3-4=40%, 5-6=50%)
+const getInteresPorQuincenas = (quincenas) => {
+  if (quincenas <= 2) return 30;
+  if (quincenas <= 4) return 40;
+  return 50;
+};
+
+// Número de pagos según frecuencia y quincenas
+const getNumPagos = (quincenas, frecuencia) => {
+  return frecuencia === 'semanal' ? quincenas * 2 : quincenas;
+};
+
+// Días entre pagos
+const getDiasFrecuencia = (frecuencia) => frecuencia === 'semanal' ? 7 : 15;
+
+// Línea de crédito por historial
+const getLimiteCredito = (cliente, prestamos) => {
+  if (cliente.limiteManual) return cliente.limiteManual;
+  const liquidadosPuntuales = prestamos.filter(p =>
+    p.clienteId === cliente.id &&
+    p.estado === 'liquidado' &&
+    !p.tuvoAtraso
+  ).length;
+  if (liquidadosPuntuales >= 3) return 5000;
+  if (liquidadosPuntuales === 2) return 4000;
+  if (liquidadosPuntuales === 1) return 3000;
+  return 2000;
+};
+
 const firebaseConfig = {
   apiKey: "AIzaSyCDYns_aIfO87mtln-ORna-9sL_7Xm1IBk",
   authDomain: "varito-46d22.firebaseapp.com",
@@ -291,7 +318,6 @@ const firebaseConfig = {
   appId: "1:228917831433:web:8487695ba7d8c44d5e95d8"
 };
 
-// Load Firebase from CDN (loaded in HTML before this script)
 let db = null;
 let fbReady = false;
 const fbCallbacks = [];
@@ -313,37 +339,12 @@ function initFirebase() {
   }
 }
 
-// ── Store ─────────────────────────────────────────────────
 const Store = (() => {
-  // In-memory cache
-  let state = { clientes: [], prestamos: [], pagos: [] };
+  let state = { clientes: [], prestamos: [], pagos: [], solicitudes: [], config: {} };
   let loaded = false;
   const listeners = [];
-
   const notify = () => listeners.forEach(fn => fn());
 
-  const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-
-  // ── Load all data from Firestore ──
-  const loadAll = async () => {
-    if (!db) return;
-    try {
-      const [cSnap, pSnap, pgSnap] = await Promise.all([
-        db.collection('clientes').orderBy('createdAt', 'desc').get(),
-        db.collection('prestamos').get(),
-        db.collection('pagos').get(),
-      ]);
-      state.clientes  = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      state.prestamos = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      state.pagos     = pgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      loaded = true;
-      notify();
-    } catch (e) {
-      console.error('Error cargando datos:', e);
-    }
-  };
-
-  // ── Subscribe to real-time updates ──
   const subscribeAll = () => {
     if (!db) return;
     db.collection('clientes').orderBy('createdAt','desc').onSnapshot(snap => {
@@ -358,84 +359,184 @@ const Store = (() => {
       state.pagos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       notify();
     });
+    db.collection('solicitudes').orderBy('createdAt','desc').onSnapshot(snap => {
+      state.solicitudes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      notify();
+    });
+    db.collection('configuracion').doc('varito').onSnapshot(doc => {
+      state.config = doc.exists ? doc.data() : {};
+      notify();
+    });
+  };
+
+  const loadAll = async () => {
+    if (!db) return;
+    try {
+      const [cSnap, pSnap, pgSnap, sSnap, cfgSnap] = await Promise.all([
+        db.collection('clientes').orderBy('createdAt','desc').get(),
+        db.collection('prestamos').get(),
+        db.collection('pagos').get(),
+        db.collection('solicitudes').orderBy('createdAt','desc').get(),
+        db.collection('configuracion').doc('varito').get(),
+      ]);
+      state.clientes   = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.prestamos  = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.pagos      = pgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.solicitudes= sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.config     = cfgSnap.exists ? cfgSnap.data() : {};
+      loaded = true;
+      notify();
+    } catch(e) { console.error('Error cargando:', e); }
   };
 
   return {
-    ACREEDORA, APP_NAME, INTERES_DEFAULT, PENALIZACION_DIARIA,
+    ACREEDORA, APP_NAME, PENALIZACION_DIARIA,
+    getInteresPorQuincenas,
 
-    // Subscribe to state changes (re-render trigger)
     subscribe: (fn) => { listeners.push(fn); },
-
     isLoaded: () => loaded,
 
     init: () => {
-      onFbReady(() => {
-        subscribeAll();
-        loadAll();
-      });
+      onFbReady(() => { subscribeAll(); loadAll(); });
     },
 
-    getClientes:  () => [...state.clientes],
-    getPrestamos: () => [...state.prestamos],
-    getPagos:     () => [...state.pagos],
+    getClientes:    () => [...state.clientes],
+    getPrestamos:   () => [...state.prestamos],
+    getPagos:       () => [...state.pagos],
+    getSolicitudes: () => [...state.solicitudes],
+    getConfig:      () => ({ ...state.config }),
 
-    getCliente:   (id) => state.clientes.find(c => c.id === id),
-    getPrestamo:  (id) => state.prestamos.find(p => p.id === id),
+    getCliente:  (id) => state.clientes.find(c => c.id === id),
+    getPrestamo: (id) => state.prestamos.find(p => p.id === id),
 
     getPagosByPrestamo: (pid) =>
       state.pagos.filter(p => p.prestamoId === pid)
-        .sort((a, b) => new Date(a.fecha) - new Date(b.fecha)),
+        .sort((a,b) => new Date(a.fecha) - new Date(b.fecha)),
 
     getPrestamosByCliente: (cid) =>
       state.prestamos.filter(p => p.clienteId === cid),
 
+    getLimiteCliente: (cliente) =>
+      getLimiteCredito(cliente, state.prestamos),
+
     getDomicilioCompleto: (c) =>
-      [c.calle, c.numExt ? `#${c.numExt}` : '', c.numInt ? `Int. ${c.numInt}` : '',
+      [c.calle, c.numExt ? '#'+c.numExt : '', c.numInt ? 'Int. '+c.numInt : '',
        c.colonia, c.cp, c.ciudad].filter(Boolean).join(', '),
 
-    // ── CRUD ──
+    getSolicitudesPendientes: () =>
+      state.solicitudes.filter(s => s.estado === 'pendiente'),
+
+    // ── Config / Firma Yaretzi ──
+    guardarFirmaYaretzi: async (firmaUrl) => {
+      await db.collection('configuracion').doc('varito').set(
+        { firmaYaretzi: firmaUrl }, { merge: true }
+      );
+    },
+    getFirmaYaretzi: () => state.config.firmaYaretzi || null,
+
+    // ── CRUD clientes ──
     addCliente: async (data) => {
       const doc = { ...data, createdAt: new Date().toISOString().split('T')[0] };
       const ref = await db.collection('clientes').add(doc);
       return { id: ref.id, ...doc };
     },
-
     updateCliente: async (id, data) => {
       await db.collection('clientes').doc(id).update(data);
     },
-
     deleteCliente: async (id) => {
       const batch = db.batch();
       const ps = state.prestamos.filter(p => p.clienteId === id);
       for (const p of ps) {
-        const pgs = state.pagos.filter(pg => pg.prestamoId === p.id);
-        pgs.forEach(pg => batch.delete(db.collection('pagos').doc(pg.id)));
+        state.pagos.filter(pg => pg.prestamoId === p.id)
+          .forEach(pg => batch.delete(db.collection('pagos').doc(pg.id)));
         batch.delete(db.collection('prestamos').doc(p.id));
       }
       batch.delete(db.collection('clientes').doc(id));
       await batch.commit();
     },
 
+    // ── CRUD préstamos ──
     addPrestamo: async (data) => {
       const folioNum = state.prestamos.length > 0
         ? Math.max(...state.prestamos.map(p => p.folioNum || 0)) + 1 : 1;
-      const doc = { ...data, estado: 'activo', folioNum };
+      const doc = { ...data, estado: 'activo', folioNum, tuvoAtraso: false };
       const ref = await db.collection('prestamos').add(doc);
       return { id: ref.id, ...doc };
     },
 
+    // ── CRUD pagos ──
     addPago: async (data) => {
       const ref = await db.collection('pagos').add(data);
       const prestamo = state.prestamos.find(p => p.id === data.prestamoId);
       if (prestamo) {
         const count = state.pagos.filter(p => p.prestamoId === data.prestamoId).length + 1;
-        if (count >= prestamo.plazo) {
-          await db.collection('prestamos').doc(data.prestamoId).update({ estado: 'liquidado' });
-        }
+        // Check if late
+        const tabla = Store.getTableraAmortizacion(prestamo);
+        const cuotaActual = tabla.find(c => c.num === data.numCuota);
+        const updates = {};
+        if (count >= prestamo.plazo) updates.estado = 'liquidado';
+        if (cuotaActual && Fmt.daysLate(cuotaActual.fecha) > 0) updates.tuvoAtraso = true;
+        if (Object.keys(updates).length > 0)
+          await db.collection('prestamos').doc(data.prestamoId).update(updates);
       }
       return { id: ref.id, ...data };
     },
 
+    // ── Solicitudes ──
+    addSolicitud: async (data) => {
+      const doc = { ...data, estado: 'pendiente', createdAt: new Date().toISOString() };
+      const ref = await db.collection('solicitudes').add(doc);
+      return { id: ref.id, ...doc };
+    },
+
+    autorizarSolicitud: async (solicitudId) => {
+      const sol = state.solicitudes.find(s => s.id === solicitudId);
+      if (!sol) throw new Error('Solicitud no encontrada');
+
+      // 1. Crear o actualizar cliente
+      let clienteId = sol.clienteId;
+      if (!clienteId) {
+        const clienteData = {
+          nombre: sol.nombre, telefono: sol.telefono,
+          fechaNacimiento: sol.fechaNacimiento, ine: sol.ine || '',
+          calle: sol.calle, numExt: sol.numExt, numInt: sol.numInt || '',
+          colonia: sol.colonia, cp: sol.cp, ciudad: sol.ciudad,
+          refNombre: sol.refNombre, refParentesco: sol.refParentesco,
+          refTelefono: sol.refTelefono, refDireccion: sol.refDireccion || '',
+          firmaClienteUrl: sol.firmaClienteUrl,
+          fotoIneUrl: null, fotoDomicilioUrl: null,
+        };
+        const c = await Store.addCliente(clienteData);
+        clienteId = c.id;
+      }
+
+      // 2. Crear préstamo
+      const { total, cuota } = Store.calcPrestamo(sol.monto, sol.interes, sol.semanas);
+      const prestamo = await Store.addPrestamo({
+        clienteId,
+        monto: sol.monto,
+        interes: sol.interes,
+        plazo: sol.semanas,
+        frecuencia: 'semanal',
+        fechaInicio: new Date().toISOString().split('T')[0],
+        totalConInteres: total,
+        pagoCuota: cuota,
+      });
+
+      // 3. Marcar solicitud como autorizada
+      await db.collection('solicitudes').doc(solicitudId).update({
+        estado: 'autorizada', clienteId, prestamoId: prestamo.id,
+        fechaAutorizacion: new Date().toISOString(),
+      });
+
+      return { clienteId, prestamo };
+    },
+
+    rechazarSolicitud: async (solicitudId) => {
+      await db.collection('solicitudes').doc(solicitudId).update({ estado: 'rechazada' });
+    },
+
+    // ── Helpers ──
     getSaldoRestante: (prestamoId) => {
       const p = state.prestamos.find(pr => pr.id === prestamoId);
       if (!p) return 0;
@@ -457,29 +558,32 @@ const Store = (() => {
     getStats: () => {
       const activos = state.prestamos.filter(p => p.estado === 'activo');
       const cartera = activos.reduce((s, p) => {
-        const pagado = state.pagos
-          .filter(pg => pg.prestamoId === p.id)
+        const pagado = state.pagos.filter(pg => pg.prestamoId === p.id)
           .reduce((a, pg) => a + pg.monto, 0);
         return s + Math.max(0, p.totalConInteres - pagado);
       }, 0);
       const hoy = new Date().toISOString().split('T')[0];
-      const pagosHoy = state.pagos
-        .filter(pg => pg.fecha === hoy)
+      const pagosHoy = state.pagos.filter(pg => pg.fecha === hoy)
         .reduce((s, pg) => s + pg.monto, 0);
+      const pendientes = state.solicitudes.filter(s => s.estado === 'pendiente').length;
       return {
-        cartera,
+        cartera, pagosHoy,
         activos: activos.length,
-        pagosHoy,
-        liquidados: state.prestamos.filter(p => p.estado === 'liquidado').length
+        liquidados: state.prestamos.filter(p => p.estado === 'liquidado').length,
+        solicitudesPendientes: pendientes,
       };
     },
 
     getTableraAmortizacion: (prestamo) => {
       const cuotas = [];
       let saldo = prestamo.totalConInteres;
-      const freq = { semanal: 7, quincenal: 15, mensual: 30 }[prestamo.frecuencia] || 15;
+      const freq = { semanal: 7, quincenal: 15, mensual: 30 }[prestamo.frecuencia] || 7;
       const pagosHechos = state.pagos.filter(pg => pg.prestamoId === prestamo.id);
       const hoy = new Date().toISOString().split('T')[0];
+      const interesTotal = prestamo.totalConInteres - prestamo.monto;
+      const interesPorCuota = Math.round((interesTotal / prestamo.plazo) * 100) / 100;
+      const capitalPorCuota = Math.round((prestamo.monto / prestamo.plazo) * 100) / 100;
+
       for (let i = 1; i <= prestamo.plazo; i++) {
         const fecha = new Date(prestamo.fechaInicio + 'T00:00:00');
         fecha.setDate(fecha.getDate() + freq * i);
@@ -490,14 +594,18 @@ const Store = (() => {
         if (pagoHecho) estado = 'pagado';
         else if (fechaStr < hoy) estado = 'vencido';
         else if (fechaStr === hoy) estado = 'hoy';
-        cuotas.push({ num: i, fecha: fechaStr, monto: prestamo.pagoCuota, saldoRestante: saldo, estado, pagoHecho });
+        cuotas.push({
+          num: i, fecha: fechaStr, monto: prestamo.pagoCuota,
+          capital: capitalPorCuota, interes: interesPorCuota,
+          saldoRestante: saldo, estado, pagoHecho
+        });
       }
       return cuotas;
     },
 
-    calcPrestamo: (monto, interesPct, plazo) => {
+    calcPrestamo: (monto, interesPct, semanas) => {
       const total = Math.round(monto * (1 + interesPct / 100) * 100) / 100;
-      const cuota = Math.round((total / plazo) * 100) / 100;
+      const cuota = Math.round((total / semanas) * 100) / 100;
       return { total, cuota };
     },
   };
@@ -567,7 +675,7 @@ const Store = (() => {
 <title>Pagaré ${Fmt.folioPagare(prestamo.folioNum)}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Times New Roman',serif;color:#1a1a1a;background:#fff url('https://enriquerocham.github.io/varito/MARCA_DE_AGUA.png') center/45% no-repeat;padding:36px;max-width:720px;margin:0 auto;font-size:12px;line-height:1.7}
+  body{font-family:'Times New Roman',serif;color:#1a1a1a;print-color-adjust:exact;-webkit-print-color-adjust:exact;background:#fff url('https://enriquerocham.github.io/varito/MARCA_DE_AGUA.png') center/45% no-repeat;padding:36px;max-width:720px;margin:0 auto;font-size:12px;line-height:1.7}
   .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2.5px solid #3D2B4F;padding-bottom:12px;margin-bottom:18px}
   .logo{font-size:26px;font-weight:700;letter-spacing:-1px;color:#1A2340;font-family:Arial,sans-serif}
   .logo span{color:#4CAF50}
@@ -599,7 +707,7 @@ const Store = (() => {
   .sign-name{font-size:11px;font-weight:700;color:#3D2B4F}
   .sign-role{font-size:9.5px;color:#888;margin-top:1px}
   .footer{margin-top:20px;font-size:9px;color:#bbb;text-align:center;border-top:0.5px solid #eee;padding-top:10px}
-  @media print{body{padding:20px} @page{margin:1.5cm}}
+  @media print{body{padding:20px;-webkit-print-color-adjust:exact;print-color-adjust:exact} @page{margin:1.5cm}}
 </style>
 </head>
 <body>
@@ -699,13 +807,13 @@ const Store = (() => {
 
 <div class="signs">
   <div class="sign-col">
-    <div class="sign-space"></div>
+    \${Store.getFirmaYaretzi() ? \`<img src="\${Store.getFirmaYaretzi()}" style="height:52px;width:auto;max-width:160px;object-fit:contain;display:block;margin:0 auto 4px"\` + '/>' : '<div class="sign-space"></div>'}
     <div class="sign-line"></div>
     <div class="sign-name">${Store.ACREEDORA}</div>
     <div class="sign-role">Beneficiaria · Varito</div>
   </div>
   <div class="sign-col">
-    <div class="sign-space"></div>
+    \${cliente.firmaClienteUrl ? \`<img src="\${cliente.firmaClienteUrl}" style="height:52px;width:auto;max-width:160px;object-fit:contain;display:block;margin:0 auto 4px"\` + '/>' : '<div class="sign-space"></div>'}
     <div class="sign-line"></div>
     <div class="sign-name">${cliente.nombre}</div>
     <div class="sign-role">Suscriptor — Deudor</div>
@@ -873,8 +981,12 @@ const Modal = {
           <div class="logo"><img src="https://enriquerocham.github.io/varito/%C3%8DCONO.png" alt="Varito" style="height:36px;width:auto" onerror="this.style.display='none'"/></div>
         </div>
         <div class="top-bar-actions">
-          <button onclick="App.navigate('reportes')" style="background:none;border:none;cursor:pointer;padding:4px">
-            <i class="ti ti-chart-bar" style="font-size:22px;color:var(--ink-mid)"></i>
+          <button onclick="App.navigate('solicitudes')" style="background:none;border:none;cursor:pointer;padding:4px;position:relative">
+            <i class="ti ti-inbox" style="font-size:22px;color:var(--ink-mid)"></i>
+            ${stats.pendientes > 0 ? '<div style="position:absolute;top:-2px;right:-2px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">'+stats.pendientes+'</div>' : ''}
+          </button>
+          <button onclick="App.navigate('configuracion')" style="background:none;border:none;cursor:pointer;padding:4px">
+            <i class="ti ti-settings" style="font-size:22px;color:var(--ink-mid)"></i>
           </button>
         </div>
       </div>
@@ -909,6 +1021,14 @@ const Modal = {
             <div class="qa-icon green"><i class="ti ti-list"></i></div>
             <span class="qa-label">Ver cartera</span>
           </button>
+          ${stats.solicitudesPendientes > 0 ? \`
+          <button class="qa-btn" onclick="App.navigate('solicitudes')" style="position:relative">
+            <div class="qa-icon" style="background:#FFF3CD;color:#8B6914;position:relative">
+              <i class="ti ti-inbox"></i>
+              <span style="position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">\${stats.solicitudesPendientes}</span>
+            </div>
+            <span class="qa-label">Solicitudes</span>
+          </button>\` : ''}
         </div>
 
         <div class="section-title">
@@ -1031,34 +1151,33 @@ const Modal = {
   }
 };
 </script><script>const ClienteDetalle = {
+  expandedLoan: null,
+
   render(clienteId) {
     const cliente = Store.getCliente(clienteId);
     if (!cliente) return App.navigate('clientes');
 
     const prestamos = Store.getPrestamosByCliente(clienteId);
     const activos = prestamos.filter(p => p.estado === 'activo');
-    const saldoTotal = activos.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0);
-    const pagosTotal = prestamos.reduce((s, p) => s + Store.getPagosCount(p.id), 0);
-    const domicilio = Store.getDomicilioCompleto(cliente);
+    const saldoTotal = activos.reduce((s,p) => s + Store.getSaldoRestante(p.id), 0);
+    const pagosTotal = prestamos.reduce((s,p) => s + Store.getPagosCount(p.id), 0);
+    const limite = Store.getLimiteCredito(clienteId);
 
     const el = document.createElement('div');
 
-    // ── Header ──
+    // Header
     const header = document.createElement('div');
     header.className = 'page-header';
     header.innerHTML = `
       <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
         <div class="c-avatar ${Fmt.avatarColor(cliente.nombre)}" style="width:50px;height:50px;font-size:16px">${Fmt.initials(cliente.nombre)}</div>
-        <div>
-          <h1>${cliente.nombre}</h1>
-          <p><i class="ti ti-phone" style="font-size:11px"></i> ${cliente.telefono}</p>
-        </div>
+        <div><h1>${cliente.nombre}</h1><p><i class="ti ti-phone" style="font-size:11px"></i> ${cliente.telefono}</p></div>
       </div>`;
     el.appendChild(header);
     el.querySelector('#back-btn').onclick = () => App.navigate('clientes');
 
-    // ── Stats ──
+    // Stats
     const stats = document.createElement('div');
     stats.className = 'stats-row';
     stats.innerHTML = `
@@ -1067,7 +1186,6 @@ const Modal = {
       <div class="stat-card"><div class="stat-val">${pagosTotal}</div><div class="stat-lbl">Pagos hechos</div></div>`;
     el.appendChild(stats);
 
-    // ── Scroll body ──
     const body = document.createElement('div');
     body.className = 'scroll-area';
     body.style.paddingBottom = '80px';
@@ -1078,111 +1196,125 @@ const Modal = {
       <div class="section-title">
         Datos del cliente
         <div style="display:flex;gap:8px">
-          <a id="edit-btn" style="color:var(--gold);cursor:pointer"><i class="ti ti-edit" style="font-size:13px"></i> Editar</a>
+          <a id="edit-btn" style="color:var(--green);cursor:pointer"><i class="ti ti-edit" style="font-size:13px"></i> Editar</a>
           <a id="delete-btn" style="color:var(--danger);cursor:pointer"><i class="ti ti-trash" style="font-size:13px"></i> Eliminar</a>
         </div>
       </div>
       <div style="padding:0 16px;display:flex;flex-direction:column;gap:6px">
-        ${domicilio ? `<div class="info-box"><i class="ti ti-map-pin"></i><span>${domicilio}</span></div>` : ''}
+        ${Store.getDomicilioCompleto(cliente) ? `<div class="info-box"><i class="ti ti-map-pin"></i><span>${Store.getDomicilioCompleto(cliente)}</span></div>` : ''}
         ${cliente.ine ? `<div class="info-box"><i class="ti ti-id"></i><span>INE: ${cliente.ine}</span></div>` : ''}
-        ${cliente.refNombre ? `<div class="info-box"><i class="ti ti-user"></i><span>Ref: ${cliente.refNombre}${cliente.refParentesco ? ' ('+cliente.refParentesco+')' : ''} · ${cliente.refTelefono || ''}</span></div>` : ''}
-        <div class="info-box"><i class="ti ti-calendar"></i><span>Cliente desde ${Fmt.date(cliente.createdAt)}</span></div>
-        <div style="display:flex;gap:8px;margin-top:2px">
-          <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:${cliente.fotoIneUrl ? 'var(--success)' : 'var(--ink-soft)'}">
-            <i class="ti ti-id" style="font-size:14px"></i> INE ${cliente.fotoIneUrl ? '✓' : 'pendiente'}
-          </div>
-          <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:${cliente.fotoDomicilioUrl ? 'var(--success)' : 'var(--ink-soft)'}">
-            <i class="ti ti-home" style="font-size:14px"></i> Domicilio ${cliente.fotoDomicilioUrl ? '✓' : 'pendiente'}
-          </div>
+        ${cliente.fechaNacimiento ? `<div class="info-box"><i class="ti ti-cake"></i><span>Nacimiento: ${Fmt.date(cliente.fechaNacimiento)}</span></div>` : ''}
+        ${cliente.refNombre ? `<div class="info-box"><i class="ti ti-user"></i><span>Ref: ${cliente.refNombre} (${cliente.refParentesco||''}) · ${cliente.refTelefono||''}</span></div>` : ''}
+        <div class="info-box" style="background:var(--green-light)">
+          <i class="ti ti-trending-up" style="color:var(--green-deep)"></i>
+          <span style="color:var(--green-deep);font-weight:500">Línea de crédito: ${Fmt.currency(limite)}</span>
         </div>
+        <div style="display:flex;gap:8px;margin-top:2px">
+          <div style="font-size:11px;color:${cliente.firmaUrl?'var(--success)':'var(--ink-soft)'}"><i class="ti ti-writing" style="font-size:13px"></i> Firma ${cliente.firmaUrl?'✓':'pendiente'}</div>
+          <div style="font-size:11px;color:${cliente.fotoIneUrl?'var(--success)':'var(--ink-soft)'}"><i class="ti ti-id" style="font-size:13px"></i> INE ${cliente.fotoIneUrl?'✓':'pendiente'}</div>
+        </div>
+        ${cliente.firmaUrl ? `<div style="border:0.5px solid var(--sand-mid);border-radius:var(--r-md);padding:8px;background:var(--white)"><div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px">FIRMA DEL CLIENTE</div><img src="${cliente.firmaUrl}" style="max-height:60px;width:auto"/></div>` : ''}
       </div>`;
     body.appendChild(secDatos);
-
     secDatos.querySelector('#edit-btn').onclick = () => App.navigate('editarCliente', clienteId);
     secDatos.querySelector('#delete-btn').addEventListener('click', async () => {
-      const psActivos = prestamos.filter(p => p.estado === 'activo').length;
-      const msg = psActivos > 0
-        ? `Este cliente tiene ${psActivos} préstamo(s) activo(s). Se eliminarán todos sus registros. ¿Continuar?`
-        : '¿Eliminar este cliente y todos sus registros?';
-      if (!window.confirm(msg)) return;
+      if (!window.confirm('¿Eliminar este cliente y todos sus registros?')) return;
       await Store.deleteCliente(clienteId);
       Toast.success('Cliente eliminado');
       App.navigate('clientes');
     });
 
-    // ── Préstamos ──
+    // ── Préstamos colapsables ──
+    const secPrestamos = document.createElement('div');
+    const titleRow = document.createElement('div');
+    titleRow.className = 'section-title';
+    titleRow.innerHTML = `<span>Préstamos (${prestamos.length})</span>`;
+    secPrestamos.appendChild(titleRow);
+
     if (prestamos.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'empty-state';
-      empty.style.paddingTop = '24px';
-      empty.innerHTML = `<i class="ti ti-cash"></i><h3>Sin préstamos</h3><p>Crea el primer préstamo para este cliente</p>`;
-      body.appendChild(empty);
+      empty.style.cssText = 'padding:20px;text-align:center;font-size:13px;color:var(--ink-soft)';
+      empty.textContent = 'Sin préstamos aún';
+      secPrestamos.appendChild(empty);
     } else {
+      let expandedId = prestamos.length === 1 ? prestamos[0].id : null;
       prestamos.forEach(p => {
         const pagosHechos = Store.getPagosCount(p.id);
         const saldo = Store.getSaldoRestante(p.id);
         const tabla = Store.getTableraAmortizacion(p);
         const vencidas = tabla.filter(t => t.estado === 'vencido').length;
-        const pagosLista = Store.getPagosByPrestamo(p.id);
+        const isExpanded = ClienteDetalle.expandedLoan === p.id;
 
-        const secPrestamo = document.createElement('div');
+        const card = document.createElement('div');
+        card.style.cssText = 'margin:0 16px 8px;border:0.5px solid var(--sand-mid);border-radius:var(--r-lg);overflow:hidden;background:var(--white)';
 
-        // Header del préstamo
-        const hdr = document.createElement('div');
-        hdr.className = 'section-title';
-        hdr.style.marginTop = '8px';
-        hdr.innerHTML = `
-          <span>Préstamo ${Fmt.folioPagare(p.folioNum)}</span>
-          <span class="badge ${p.estado === 'liquidado' ? 'badge-ok' : vencidas > 0 ? 'badge-late' : 'badge-new'}" style="font-size:10px">
-            ${p.estado === 'liquidado' ? 'Liquidado' : vencidas > 0 ? vencidas + ' vencido' + (vencidas>1?'s':'') : 'Activo'}
-          </span>`;
-        secPrestamo.appendChild(hdr);
+        // Card header (always visible)
+        const cardHeader = document.createElement('div');
+        cardHeader.style.cssText = 'padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;user-select:none';
+        const badgeClass = p.estado==='liquidado' ? 'badge-ok' : vencidas>0 ? 'badge-late' : 'badge-new';
+        const badgeText = p.estado==='liquidado' ? 'Liquidado' : vencidas>0 ? vencidas+' vencido'+(vencidas>1?'s':'') : 'Activo';
+        cardHeader.innerHTML = `
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:var(--ink)">${Fmt.folioPagare(p.folioNum)}</div>
+            <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${Fmt.currency(p.monto)} capital · ${pagosHechos}/${p.plazo} pagos</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:14px;font-weight:700;color:${saldo>0?'var(--navy)':'var(--success)'}">${Fmt.currency(saldo)}</div>
+            <span class="badge ${badgeClass}" style="margin-top:2px">${badgeText}</span>
+          </div>
+          <i class="ti ti-chevron-${isExpanded?'up':'down'}" id="chevron-${p.id}" style="font-size:16px;color:var(--ink-soft);margin-left:4px"></i>`;
+        card.appendChild(cardHeader);
+
+        // Card body (collapsible)
+        const cardBody = document.createElement('div');
+        cardBody.id = 'loan-body-' + p.id;
+        cardBody.style.cssText = `display:${isExpanded?'block':'none'};border-top:0.5px solid var(--sand-mid)`;
 
         // Mini stats
         const ms = document.createElement('div');
         ms.className = 'stats-row';
-        ms.style.paddingTop = '0';
+        ms.style.cssText = 'background:var(--sand);padding:10px 12px;gap:8px';
         ms.innerHTML = `
-          <div class="stat-card"><div class="stat-val">${Fmt.currency(p.monto)}</div><div class="stat-lbl">Capital</div></div>
-          <div class="stat-card"><div class="stat-val">${pagosHechos}/${p.plazo}</div><div class="stat-lbl">Pagos</div></div>
-          <div class="stat-card"><div class="stat-val" style="${saldo > 0 ? 'color:var(--gold-deep)' : 'color:var(--success)'}">${Fmt.currency(saldo)}</div><div class="stat-lbl">Saldo</div></div>`;
-        secPrestamo.appendChild(ms);
+          <div class="stat-card"><div class="stat-val" style="font-size:14px">${Fmt.currency(p.monto)}</div><div class="stat-lbl">Capital</div></div>
+          <div class="stat-card"><div class="stat-val" style="font-size:14px">${p.interes}%</div><div class="stat-lbl">Interés</div></div>
+          <div class="stat-card"><div class="stat-val" style="font-size:14px">${pagosHechos}/${p.plazo}</div><div class="stat-lbl">Pagos</div></div>`;
+        cardBody.appendChild(ms);
 
-        // Botones
+        // Buttons
         const btns = document.createElement('div');
         btns.className = 'btn-row';
-        btns.style.paddingTop = '0';
+        btns.style.cssText = 'padding:10px 12px 4px;gap:8px';
         if (p.estado === 'activo') {
-          const btnPago = document.createElement('button');
-          btnPago.className = 'btn btn-primary btn-sm';
-          btnPago.innerHTML = '<i class="ti ti-plus"></i> Registrar pago';
-          btnPago.onclick = () => App.navigate('registrarPago', p.id);
-          btns.appendChild(btnPago);
+          const b1 = document.createElement('button');
+          b1.className = 'btn btn-primary btn-sm';
+          b1.innerHTML = '<i class="ti ti-plus"></i> Registrar pago';
+          b1.onclick = () => App.navigate('registrarPago', p.id);
+          btns.appendChild(b1);
         }
-        const btnTabla = document.createElement('button');
-        btnTabla.className = 'btn btn-secondary btn-sm';
-        btnTabla.innerHTML = '<i class="ti ti-table"></i> Tabla';
-        btnTabla.onclick = () => App.navigate('verTabla', p.id);
-        btns.appendChild(btnTabla);
+        const b2 = document.createElement('button');
+        b2.className = 'btn btn-secondary btn-sm';
+        b2.innerHTML = '<i class="ti ti-table"></i> Tabla';
+        b2.onclick = () => App.navigate('verTabla', p.id);
+        btns.appendChild(b2);
+        const b3 = document.createElement('button');
+        b3.className = 'btn btn-secondary btn-sm';
+        b3.innerHTML = '<i class="ti ti-file-text"></i> Pagaré';
+        b3.onclick = () => PDF.generarPagare(p, cliente);
+        btns.appendChild(b3);
+        cardBody.appendChild(btns);
 
-        const btnPagare = document.createElement('button');
-        btnPagare.className = 'btn btn-secondary btn-sm';
-        btnPagare.innerHTML = '<i class="ti ti-file-text"></i> Pagaré';
-        btnPagare.onclick = () => PDF.generarPagare(p, cliente);
-        btns.appendChild(btnPagare);
-        secPrestamo.appendChild(btns);
-
-        // Historial pagos
+        // Payment history
         const histTitle = document.createElement('div');
-        histTitle.className = 'section-title';
-        histTitle.style.cssText = 'font-size:12px;padding-top:4px';
+        histTitle.style.cssText = 'padding:8px 16px 4px;font-size:12px;font-weight:600;color:var(--ink-mid)';
         histTitle.textContent = 'Historial de pagos';
-        secPrestamo.appendChild(histTitle);
+        cardBody.appendChild(histTitle);
 
         const hist = document.createElement('div');
         hist.className = 'payment-list';
+        hist.style.padding = '0 16px 12px';
+        const pagosLista = Store.getPagosByPrestamo(p.id);
         if (pagosLista.length === 0) {
-          hist.innerHTML = '<div style="padding:12px 0;font-size:13px;color:var(--ink-soft);text-align:center">Sin pagos registrados aún</div>';
+          hist.innerHTML = '<div style="padding:10px 0;font-size:12px;color:var(--ink-soft);text-align:center">Sin pagos aún</div>';
         } else {
           [...pagosLista].reverse().forEach((pg, i) => {
             const row = document.createElement('div');
@@ -1191,30 +1323,43 @@ const Modal = {
               <div class="pmt-dot paid"></div>
               <div class="pmt-info">
                 <div class="pmt-date">${Fmt.date(pg.fecha)}</div>
-                <div class="pmt-note">${pg.metodo.charAt(0).toUpperCase()+pg.metodo.slice(1)}${pg.folio ? ' · '+pg.folio : ''}${pg.nota ? ' · '+pg.nota : ''}${pg.comprobanteUrl ? ' · <span style="color:var(--gold)"><i class="ti ti-photo" style="font-size:11px"></i> Comprobante</span>' : ''}</div>
+                <div class="pmt-note">${pg.metodo.charAt(0).toUpperCase()+pg.metodo.slice(1)}${pg.folio?' · '+pg.folio:''}${pg.nota?' · '+pg.nota:''}</div>
               </div>
               <div class="pmt-amount">${Fmt.currency(pg.monto)}</div>`;
-
-            const btnRecibo = document.createElement('button');
-            btnRecibo.style.cssText = 'background:none;border:none;cursor:pointer;padding:4px';
-            btnRecibo.title = 'Ver comprobante';
-            btnRecibo.innerHTML = '<i class="ti ti-receipt" style="font-size:16px;color:var(--gold-deep)"></i>';
-            btnRecibo.onclick = () => PDF.generarRecibo(pg, p, cliente, pagosLista.length - i);
-            row.appendChild(btnRecibo);
+            const btnR = document.createElement('button');
+            btnR.style.cssText = 'background:none;border:none;cursor:pointer;padding:4px';
+            btnR.innerHTML = '<i class="ti ti-receipt" style="font-size:16px;color:var(--navy)"></i>';
+            btnR.onclick = () => PDF.generarRecibo(pg, p, cliente, pagosLista.length - i);
+            row.appendChild(btnR);
             hist.appendChild(row);
           });
         }
-        secPrestamo.appendChild(hist);
-        body.appendChild(secPrestamo);
+        cardBody.appendChild(hist);
+        card.appendChild(cardBody);
+
+        // Toggle collapse
+        cardHeader.addEventListener('click', () => {
+          const isOpen = cardBody.style.display !== 'none';
+          ClienteDetalle.expandedLoan = isOpen ? null : p.id;
+          cardBody.style.display = isOpen ? 'none' : 'block';
+          const chevron = cardHeader.querySelector('[id^="chevron-"]');
+          if (chevron) chevron.className = `ti ti-chevron-${isOpen?'down':'up'}`;
+        });
+
+        secPrestamos.appendChild(card);
       });
     }
+    body.appendChild(secPrestamos);
 
-    // Botón nuevo préstamo
+    // New loan button
     const btnNuevo = document.createElement('div');
     btnNuevo.style.padding = '8px 16px 16px';
-    btnNuevo.innerHTML = `<button class="btn btn-mauve" id="btn-nuevo-prestamo"><i class="ti ti-plus"></i> Nuevo préstamo para este cliente</button>`;
+    const btnN = document.createElement('button');
+    btnN.className = 'btn btn-mauve';
+    btnN.innerHTML = '<i class="ti ti-plus"></i> Nuevo préstamo para este cliente';
+    btnN.onclick = () => App.navigate('nuevoPrestamo', clienteId);
+    btnNuevo.appendChild(btnN);
     body.appendChild(btnNuevo);
-    btnNuevo.querySelector('#btn-nuevo-prestamo').onclick = () => App.navigate('nuevoPrestamo', clienteId);
 
     el.appendChild(body);
     return el;
@@ -1227,168 +1372,276 @@ const Modal = {
     const back = editing ? () => App.navigate('clienteDetalle', clienteId) : () => App.navigate('clientes');
     const e = (f) => editing?.[f] || '';
 
-    const el = document.createElement('div');
-    el.innerHTML = `
-      <div class="page-header" style="padding:14px 20px 16px">
-        <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
-        <div style="padding-left:36px"><h1>${title}</h1><p>Expediente del cliente</p></div>
-      </div>
-      <div class="scroll-area" style="padding-bottom:16px">
-        <div class="info-box" style="margin:12px 16px">
-          <i class="ti ti-info-circle"></i>
-          <span>Los campos con * son obligatorios. Adjunta INE y comprobante de domicilio como evidencia.</span>
-        </div>
-        <div class="form-body">
-
-          <div style="font-size:11px;font-weight:700;color:var(--mauve);letter-spacing:1px;padding:4px 0 2px">DATOS PERSONALES</div>
-          <div class="field"><label>Nombre completo *</label>
-            <input type="text" id="nombre" placeholder="Nombre y apellidos completos" value="${e('nombre')}"/>
-          </div>
-          <div class="field"><label>Teléfono / WhatsApp *</label>
-            <input type="tel" id="telefono" placeholder="10 dígitos" value="${e('telefono')}" maxlength="10"/>
-          </div>
-          <div class="field"><label>Número de INE (clave de elector)</label>
-            <input type="text" id="ine" placeholder="Ej: GOPL850412MNLNRR04" value="${e('ine')}" style="text-transform:uppercase"/>
-          </div>
-
-          <div style="font-size:11px;font-weight:700;color:var(--mauve);letter-spacing:1px;padding:8px 0 2px">DOMICILIO</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <div class="field"><label>Calle *</label>
-              <input type="text" id="calle" placeholder="Nombre de la calle" value="${e('calle')}"/>
-            </div>
-            <div class="field"><label>Núm. exterior *</label>
-              <input type="text" id="numExt" placeholder="Ej: 12" value="${e('numExt')}"/>
-            </div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <div class="field"><label>Núm. interior</label>
-              <input type="text" id="numInt" placeholder="Depto, local (opcional)" value="${e('numInt')}"/>
-            </div>
-            <div class="field"><label>Código postal</label>
-              <input type="text" id="cp" placeholder="Ej: 66050" value="${e('cp')}" maxlength="5"/>
-            </div>
-          </div>
-          <div class="field"><label>Colonia *</label>
-            <input type="text" id="colonia" placeholder="Nombre de la colonia" value="${e('colonia')}"/>
-          </div>
-          <div class="field"><label>Ciudad / Municipio *</label>
-            <input type="text" id="ciudad" placeholder="Ej: García, N.L." value="${e('ciudad')}"/>
-          </div>
-
-          <div style="font-size:11px;font-weight:700;color:var(--mauve);letter-spacing:1px;padding:8px 0 2px">REFERENCIA PERSONAL</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <div class="field"><label>Nombre *</label>
-              <input type="text" id="refNombre" placeholder="Nombre completo" value="${e('refNombre')}"/>
-            </div>
-            <div class="field"><label>Parentesco *</label>
-              <input type="text" id="refParentesco" placeholder="Ej: Madre, Esposo..." value="${e('refParentesco')}"/>
-            </div>
-          </div>
-          <div class="field"><label>Teléfono de referencia *</label>
-            <input type="tel" id="refTelefono" placeholder="10 dígitos" value="${e('refTelefono')}" maxlength="10"/>
-          </div>
-          <div class="field"><label>Dirección de referencia (opcional)</label>
-            <input type="text" id="refDireccion" placeholder="Calle, número, colonia" value="${e('refDireccion')}"/>
-          </div>
-
-          <div style="font-size:11px;font-weight:700;color:var(--mauve);letter-spacing:1px;padding:8px 0 2px">DOCUMENTOS PROBATORIOS</div>
-
-          <div class="field">
-            <label>Foto del INE <span style="font-size:10px;color:var(--ink-soft);font-weight:400;text-transform:none">— ambos lados si es posible</span></label>
-            <div class="photo-zone" id="zone-ine" onclick="document.getElementById('file-ine').click()">
-              <i class="ti ti-id"></i>
-              <div class="pz-label">Fotografiar o adjuntar INE</div>
-              <div class="pz-sub">JPG, PNG — máx 5 MB</div>
-              <input type="file" id="file-ine" accept="image/*"/>
-            </div>
-            <div id="prev-ine" style="display:none" class="photo-preview-box">
-              <img id="img-ine" src="" alt="INE"/>
-              <button class="photo-remove" id="rm-ine"><i class="ti ti-x"></i></button>
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Comprobante de domicilio <span style="font-size:10px;color:var(--ink-soft);font-weight:400;text-transform:none">— reciente (máx 3 meses)</span></label>
-            <div class="photo-zone" id="zone-dom" onclick="document.getElementById('file-dom').click()" style="background:var(--mauve-light);border-color:var(--mauve)">
-              <i class="ti ti-home" style="color:var(--mauve)"></i>
-              <div class="pz-label" style="color:var(--mauve-deep)">Fotografiar o adjuntar comprobante</div>
-              <div class="pz-sub" style="color:var(--mauve)">Luz, agua, gas, estado de cuenta</div>
-              <input type="file" id="file-dom" accept="image/*"/>
-            </div>
-            <div id="prev-dom" style="display:none" class="photo-preview-box">
-              <img id="img-dom" src="" alt="Comprobante domicilio"/>
-              <button class="photo-remove" id="rm-dom"><i class="ti ti-x"></i></button>
-            </div>
-          </div>
-
-          <button class="btn btn-primary" id="save-btn">
-            <i class="ti ti-check"></i> ${editing ? 'Guardar cambios' : 'Registrar cliente'}
-          </button>
-          <button class="btn btn-secondary" id="cancel-btn">Cancelar</button>
-        </div>
-      </div>
-    `;
-
-    el.querySelector('#back-btn').onclick = back;
-    el.querySelector('#cancel-btn').onclick = back;
-
+    let firmaDataUrl = editing?.firmaUrl || null;
     let ineUrl = editing?.fotoIneUrl || null;
     let domUrl = editing?.fotoDomicilioUrl || null;
+    let isDrawing = false;
+    let lastX = 0, lastY = 0;
 
+    const el = document.createElement('div');
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'page-header';
+    header.style.padding = '14px 20px 16px';
+    header.innerHTML = `
+      <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
+      <div style="padding-left:36px"><h1>${title}</h1><p>Expediente del cliente</p></div>`;
+    el.appendChild(header);
+    el.querySelector('#back-btn').onclick = back;
+
+    const body = document.createElement('div');
+    body.style.paddingBottom = '80px';
+
+    const form = document.createElement('div');
+    form.className = 'form-body';
+    form.innerHTML = `
+      <div class="info-box"><i class="ti ti-info-circle"></i><span>Los campos con * son obligatorios.</span></div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--navy);letter-spacing:1px;padding:4px 0 2px">DATOS PERSONALES</div>
+      <div class="field"><label>Nombre completo *</label>
+        <input type="text" id="nombre" placeholder="Nombre y apellidos completos" value="${e('nombre')}"/>
+      </div>
+      <div class="field"><label>Teléfono / WhatsApp *</label>
+        <input type="tel" id="telefono" placeholder="10 dígitos" value="${e('telefono')}" maxlength="10"/>
+      </div>
+      <div class="field"><label>Fecha de nacimiento *</label>
+        <input type="date" id="fechaNacimiento" value="${e('fechaNacimiento')}"/>
+      </div>
+      <div class="field"><label>Número de INE (clave de elector)</label>
+        <input type="text" id="ine" placeholder="Ej: GOPL850412MNLNRR04" value="${e('ine')}" style="text-transform:uppercase"/>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--navy);letter-spacing:1px;padding:8px 0 2px">DOMICILIO</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field"><label>Calle *</label><input type="text" id="calle" placeholder="Nombre de la calle" value="${e('calle')}"/></div>
+        <div class="field"><label>Núm. exterior *</label><input type="text" id="numExt" placeholder="Ej: 12" value="${e('numExt')}"/></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field"><label>Núm. interior</label><input type="text" id="numInt" placeholder="Opcional" value="${e('numInt')}"/></div>
+        <div class="field"><label>Código postal</label><input type="text" id="cp" placeholder="Ej: 66050" value="${e('cp')}" maxlength="5"/></div>
+      </div>
+      <div class="field"><label>Colonia *</label><input type="text" id="colonia" placeholder="Nombre de la colonia" value="${e('colonia')}"/></div>
+      <div class="field"><label>Ciudad / Municipio *</label><input type="text" id="ciudad" placeholder="Ej: García, N.L." value="${e('ciudad')}"/></div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--navy);letter-spacing:1px;padding:8px 0 2px">REFERENCIA PERSONAL</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field"><label>Nombre *</label><input type="text" id="refNombre" placeholder="Nombre completo" value="${e('refNombre')}"/></div>
+        <div class="field"><label>Parentesco *</label><input type="text" id="refParentesco" placeholder="Ej: Madre" value="${e('refParentesco')}"/></div>
+      </div>
+      <div class="field"><label>Teléfono de referencia *</label>
+        <input type="tel" id="refTelefono" placeholder="10 dígitos" value="${e('refTelefono')}" maxlength="10"/>
+      </div>
+      <div class="field"><label>Dirección de referencia (opcional)</label>
+        <input type="text" id="refDireccion" value="${e('refDireccion')}"/>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--navy);letter-spacing:1px;padding:8px 0 2px">DOCUMENTOS</div>`;
+
+    // Photo INE
+    const zoneIne = document.createElement('div');
+    zoneIne.className = 'field';
+    zoneIne.innerHTML = `
+      <label>Foto del INE</label>
+      <div class="photo-zone" id="zone-ine"><i class="ti ti-id"></i>
+        <div class="pz-label">Fotografiar o adjuntar INE</div>
+        <input type="file" id="file-ine" accept="image/*"/>
+      </div>
+      <div id="prev-ine" style="display:none" class="photo-preview-box">
+        <img id="img-ine" src="" alt="INE"/>
+        <button class="photo-remove" id="rm-ine"><i class="ti ti-x"></i></button>
+      </div>`;
+    form.appendChild(zoneIne);
+
+    // Photo domicilio
+    const zoneDom = document.createElement('div');
+    zoneDom.className = 'field';
+    zoneDom.innerHTML = `
+      <label>Comprobante de domicilio</label>
+      <div class="photo-zone" id="zone-dom" style="background:var(--navy-light);border-color:var(--navy)">
+        <i class="ti ti-home" style="color:var(--navy)"></i>
+        <div class="pz-label" style="color:var(--navy)">Fotografiar comprobante</div>
+        <input type="file" id="file-dom" accept="image/*"/>
+      </div>
+      <div id="prev-dom" style="display:none" class="photo-preview-box">
+        <img id="img-dom" src="" alt="Domicilio"/>
+        <button class="photo-remove" id="rm-dom"><i class="ti ti-x"></i></button>
+      </div>`;
+    form.appendChild(zoneDom);
+
+    // Firma digital
+    const firmaSection = document.createElement('div');
+    firmaSection.className = 'field';
+    firmaSection.innerHTML = `
+      <label>Firma digital del cliente <span style="font-size:10px;color:var(--ink-soft);font-weight:400;text-transform:none">— firmar con el dedo</span></label>
+      <div style="border:1.5px solid var(--sand-mid);border-radius:var(--r-lg);overflow:hidden;background:#fff;position:relative">
+        <canvas id="firma-canvas" width="358" height="140" style="display:block;width:100%;touch-action:none;cursor:crosshair"></canvas>
+        <div id="firma-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+          <span style="font-size:12px;color:var(--ink-soft)">Firmar aquí con el dedo</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn btn-secondary btn-sm" id="clear-firma" style="font-size:11px">
+          <i class="ti ti-eraser"></i> Borrar firma
+        </button>
+        <div id="firma-status" style="flex:1;display:flex;align-items:center;font-size:11px;color:var(--ink-soft)">Sin firma aún</div>
+      </div>`;
+    form.appendChild(firmaSection);
+
+    // Save button
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn btn-primary';
+    saveBtn.id = 'save-btn';
+    saveBtn.innerHTML = `<i class="ti ti-check"></i> ${editing ? 'Guardar cambios' : 'Registrar cliente'}`;
+    form.appendChild(saveBtn);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-secondary';
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.onclick = back;
+    form.appendChild(cancelBtn);
+
+    body.appendChild(form);
+    el.appendChild(body);
+
+    // ── Setup photo handlers ──
     const setupPhoto = (fileId, zoneId, prevId, imgId, rmId, getUrl, setUrl) => {
-      const file = el.querySelector(`#${fileId}`);
-      const zone = el.querySelector(`#${zoneId}`);
-      const prev = el.querySelector(`#${prevId}`);
-      const img = el.querySelector(`#${imgId}`);
-      const rm = el.querySelector(`#${rmId}`);
-
+      const zone = el.querySelector('#' + zoneId);
+      const prev = el.querySelector('#' + prevId);
+      const img  = el.querySelector('#' + imgId);
+      const rm   = el.querySelector('#' + rmId);
+      const file = el.querySelector('#' + fileId);
+      zone.onclick = () => file.click();
       if (getUrl()) { img.src = getUrl(); prev.style.display = 'block'; zone.style.display = 'none'; }
-
-      file.addEventListener('change', (ev) => {
+      file.addEventListener('change', ev => {
         const f = ev.target.files[0]; if (!f) return;
         const reader = new FileReader();
-        reader.onload = (e) => { setUrl(e.target.result); img.src = e.target.result; prev.style.display = 'block'; zone.style.display = 'none'; };
+        reader.onload = e => { setUrl(e.target.result); img.src = e.target.result; prev.style.display='block'; zone.style.display='none'; };
         reader.readAsDataURL(f);
       });
-      rm.addEventListener('click', () => { setUrl(null); prev.style.display = 'none'; zone.style.display = 'block'; });
+      rm.onclick = () => { setUrl(null); prev.style.display='none'; zone.style.display='block'; };
     };
 
-    setupPhoto('file-ine','zone-ine','prev-ine','img-ine','rm-ine', () => ineUrl, (v) => ineUrl = v);
-    setupPhoto('file-dom','zone-dom','prev-dom','img-dom','rm-dom', () => domUrl, (v) => domUrl = v);
+    setupPhoto('file-ine','zone-ine','prev-ine','img-ine','rm-ine', ()=>ineUrl, v=>ineUrl=v);
+    setupPhoto('file-dom','zone-dom','prev-dom','img-dom','rm-dom', ()=>domUrl, v=>domUrl=v);
 
-    el.querySelector('#save-btn').addEventListener('click', async () => {
-      const nombre = el.querySelector('#nombre').value.trim();
-      const telefono = el.querySelector('#telefono').value.trim();
-      const calle = el.querySelector('#calle').value.trim();
-      const numExt = el.querySelector('#numExt').value.trim();
-      const colonia = el.querySelector('#colonia').value.trim();
-      const ciudad = el.querySelector('#ciudad').value.trim();
-      const refNombre = el.querySelector('#refNombre').value.trim();
-      const refParentesco = el.querySelector('#refParentesco').value.trim();
-      const refTelefono = el.querySelector('#refTelefono').value.trim();
+    // ── Setup signature canvas ──
+    setTimeout(() => {
+      const canvas = el.querySelector('#firma-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const placeholder = el.querySelector('#firma-placeholder');
+      const status = el.querySelector('#firma-status');
+      let hasFirma = false;
 
-      if (!nombre || !telefono) { Toast.error('Nombre y teléfono son obligatorios'); return; }
-      if (!calle || !numExt || !colonia || !ciudad) { Toast.error('Completa el domicilio'); return; }
-      if (!refNombre || !refParentesco || !refTelefono) { Toast.error('Completa la referencia personal'); return; }
+      // If editing and has signature, draw it
+      if (firmaDataUrl) {
+        const img = new Image();
+        img.onload = () => { ctx.drawImage(img, 0, 0); };
+        img.src = firmaDataUrl;
+        placeholder.style.display = 'none';
+        status.textContent = '✓ Firma guardada';
+        status.style.color = 'var(--success)';
+        hasFirma = true;
+      }
 
-      const data = {
-        nombre, telefono,
-        calle, numExt, numInt: el.querySelector('#numInt').value.trim(),
-        colonia, cp: el.querySelector('#cp').value.trim(), ciudad,
-        ine: el.querySelector('#ine').value.trim().toUpperCase(),
-        refNombre, refParentesco, refTelefono,
-        refDireccion: el.querySelector('#refDireccion').value.trim(),
-        fotoIneUrl: ineUrl, fotoDomicilioUrl: domUrl,
+      const getPos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const src = e.touches ? e.touches[0] : e;
+        return { x: (src.clientX - rect.left) * scaleX, y: (src.clientY - rect.top) * scaleY };
       };
 
-      if (editing) {
-        await Store.updateCliente(clienteId, data);
-        Toast.success('Cliente actualizado');
-        App.navigate('clienteDetalle', clienteId);
-      } else {
-        const c = await Store.addCliente(data);
-        Toast.success('Cliente registrado');
-        App.navigate('clienteDetalle', c.id);
+      const startDraw = (e) => {
+        e.preventDefault();
+        isDrawing = true;
+        const pos = getPos(e);
+        lastX = pos.x; lastY = pos.y;
+        placeholder.style.display = 'none';
+      };
+      const draw = (e) => {
+        e.preventDefault();
+        if (!isDrawing) return;
+        const pos = getPos(e);
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.strokeStyle = '#1A2340';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        lastX = pos.x; lastY = pos.y;
+        hasFirma = true;
+        firmaDataUrl = canvas.toDataURL();
+        status.textContent = '✓ Firma capturada';
+        status.style.color = 'var(--success)';
+      };
+      const endDraw = () => { isDrawing = false; };
+
+      canvas.addEventListener('mousedown', startDraw);
+      canvas.addEventListener('mousemove', draw);
+      canvas.addEventListener('mouseup', endDraw);
+      canvas.addEventListener('touchstart', startDraw, { passive: false });
+      canvas.addEventListener('touchmove', draw, { passive: false });
+      canvas.addEventListener('touchend', endDraw);
+
+      el.querySelector('#clear-firma').onclick = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        firmaDataUrl = null;
+        hasFirma = false;
+        placeholder.style.display = 'flex';
+        status.textContent = 'Sin firma aún';
+        status.style.color = 'var(--ink-soft)';
+      };
+    }, 100);
+
+    // ── Save ──
+    saveBtn.addEventListener('click', async () => {
+      const nombre    = el.querySelector('#nombre').value.trim();
+      const telefono  = el.querySelector('#telefono').value.trim();
+      const fechaNac  = el.querySelector('#fechaNacimiento').value;
+      const calle     = el.querySelector('#calle').value.trim();
+      const numExt    = el.querySelector('#numExt').value.trim();
+      const colonia   = el.querySelector('#colonia').value.trim();
+      const ciudad    = el.querySelector('#ciudad').value.trim();
+      const refNombre = el.querySelector('#refNombre').value.trim();
+      const refPar    = el.querySelector('#refParentesco').value.trim();
+      const refTel    = el.querySelector('#refTelefono').value.trim();
+
+      if (!nombre || !telefono || !fechaNac) { Toast.error('Nombre, teléfono y fecha de nacimiento son obligatorios'); return; }
+      if (!calle || !numExt || !colonia || !ciudad) { Toast.error('Completa el domicilio'); return; }
+      if (!refNombre || !refPar || !refTel) { Toast.error('Completa la referencia personal'); return; }
+
+      const data = {
+        nombre, telefono, fechaNacimiento: fechaNac,
+        ine: el.querySelector('#ine').value.trim().toUpperCase(),
+        calle, numExt, numInt: el.querySelector('#numInt').value.trim(),
+        colonia, cp: el.querySelector('#cp').value.trim(), ciudad,
+        refNombre, refParentesco: refPar, refTelefono: refTel,
+        refDireccion: el.querySelector('#refDireccion').value.trim(),
+        fotoIneUrl: ineUrl, fotoDomicilioUrl: domUrl,
+        firmaUrl: firmaDataUrl,
+      };
+
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="ti ti-loader"></i> Guardando...';
+
+      try {
+        if (editing) {
+          await Store.updateCliente(clienteId, data);
+          Toast.success('Cliente actualizado');
+          App.navigate('clienteDetalle', clienteId);
+        } else {
+          const c = await Store.addCliente(data);
+          Toast.success('Cliente registrado');
+          App.navigate('clienteDetalle', c.id);
+        }
+      } catch(err) {
+        Toast.error('Error al guardar');
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = `<i class="ti ti-check"></i> ${editing ? 'Guardar cambios' : 'Registrar cliente'}`;
       }
     });
 
@@ -1398,150 +1651,253 @@ const Modal = {
 </script><script>const NuevoPrestamo = {
   render(preClienteId) {
     const clientes = Store.getClientes();
-
     const el = document.createElement('div');
-    el.innerHTML = `
-      <div class="page-header" style="padding:14px 20px 16px">
-        <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
-        <div style="padding-left:36px"><h1>Nuevo préstamo</h1><p>Configura los términos del crédito</p></div>
+
+    const header = document.createElement('div');
+    header.className = 'page-header';
+    header.style.padding = '14px 20px 16px';
+    header.innerHTML = `
+      <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
+      <div style="padding-left:36px"><h1>Nuevo préstamo</h1><p>Configura el crédito</p></div>`;
+    el.appendChild(header);
+    el.querySelector('#back-btn').onclick = () =>
+      preClienteId ? App.navigate('clienteDetalle', preClienteId) : App.navigate('clientes');
+
+    const body = document.createElement('div');
+    body.className = 'form-body';
+    body.style.paddingBottom = '80px';
+
+    // Cliente
+    const fCliente = document.createElement('div');
+    fCliente.className = 'field';
+    fCliente.innerHTML = `
+      <label>Cliente *</label>
+      <select id="cliente-sel">
+        <option value="">— Selecciona cliente —</option>
+        ${clientes.map(c => `<option value="${c.id}" ${c.id === preClienteId ? 'selected' : ''}>${c.nombre}</option>`).join('')}
+      </select>
+      <span class="field-hint" id="limite-hint" style="color:var(--green)"></span>`;
+    body.appendChild(fCliente);
+
+    // Monto
+    const fMonto = document.createElement('div');
+    fMonto.className = 'field';
+    fMonto.innerHTML = `
+      <label>Monto a prestar *</label>
+      <input type="number" id="monto" placeholder="$0.00" min="100" step="100"/>`;
+    body.appendChild(fMonto);
+
+    // Frecuencia
+    const fFrec = document.createElement('div');
+    fFrec.className = 'field';
+    fFrec.innerHTML = `
+      <label>Frecuencia de pago</label>
+      <div class="method-row" id="frec-row">
+        <div class="method-chip active" data-frec="semanal"><i class="ti ti-calendar-week" style="font-size:13px"></i> Semanal</div>
+        <div class="method-chip" data-frec="quincenal"><i class="ti ti-calendar" style="font-size:13px"></i> Quincenal</div>
+      </div>`;
+    body.appendChild(fFrec);
+
+    // Quincenas
+    const fQuinc = document.createElement('div');
+    fQuinc.className = 'field';
+    fQuinc.innerHTML = `
+      <label>Número de quincenas *</label>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px" id="quinc-grid">
+        ${[1,2,3,4,5,6].map(q => `
+          <button type="button" class="quinc-btn" data-q="${q}" style="
+            padding:10px 4px;border-radius:var(--r-md);border:1.5px solid var(--sand-mid);
+            background:var(--sand);font-size:13px;font-weight:600;color:var(--ink-mid);cursor:pointer;
+            display:flex;flex-direction:column;align-items:center;gap:2px">
+            <span>${q}</span>
+            <span style="font-size:9px;font-weight:400">${q<=2?'30%':q<=4?'40%':'50%'}</span>
+          </button>`).join('')}
       </div>
-      <div class="scroll-area" style="padding-bottom:16px">
-        <div class="form-body">
-          <div class="field">
-            <label>Cliente *</label>
-            <select id="cliente-sel">
-              <option value="">— Selecciona cliente —</option>
-              ${clientes.map(c => `<option value="${c.id}" ${c.id === preClienteId ? 'selected' : ''}>${c.nombre}</option>`).join('')}
-            </select>
-            <span class="field-hint">¿No está? <a onclick="App.navigate('nuevoCliente')" style="color:var(--rose);cursor:pointer">Registrar nuevo cliente</a></span>
-          </div>
-          <div class="field">
-            <label>Monto a prestar *</label>
-            <input type="number" id="monto" placeholder="$0.00" min="100" step="100"/>
-          </div>
-          <div class="field">
-            <label>Interés total (%)</label>
-            <input type="number" id="interes" placeholder="30" min="0" max="300" value="${Store.INTERES_DEFAULT}"/>
-            <span class="field-hint">Interés fijo sobre el capital. Por defecto: ${Store.INTERES_DEFAULT}%</span>
-          </div>
-          <div class="field">
-            <label>Número de pagos *</label>
-            <input type="number" id="plazo" placeholder="8" min="1" max="52" value="8"/>
-          </div>
-          <div class="field">
-            <label>Frecuencia de pago</label>
-            <select id="frecuencia">
-              <option value="semanal">Semanal (cada 7 días)</option>
-              <option value="quincenal" selected>Quincenal (cada 15 días)</option>
-              <option value="mensual">Mensual (cada 30 días)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Fecha de inicio</label>
-            <input type="date" id="fechaInicio" value="${Fmt.today()}"/>
-          </div>
+      <div id="quinc-badge" style="display:none;margin-top:6px;padding:8px 12px;background:var(--green-light);border-radius:var(--r-md);font-size:12px;color:var(--green-deep);font-weight:500"></div>`;
+    body.appendChild(fQuinc);
 
-          <div id="calc-preview" style="display:none;background:var(--mauve-light);border-radius:var(--r-lg);padding:16px">
-            <div style="font-size:11px;font-weight:700;color:var(--mauve);margin-bottom:10px;letter-spacing:0.5px">RESUMEN DEL CRÉDITO</div>
-            <div style="display:flex;flex-direction:column;gap:7px">
-              <div style="display:flex;justify-content:space-between">
-                <span style="font-size:12px;color:var(--mauve)">Capital prestado</span>
-                <span style="font-size:13px;font-weight:600;color:var(--mauve-deep)" id="prev-capital">—</span>
-              </div>
-              <div style="display:flex;justify-content:space-between">
-                <span style="font-size:12px;color:var(--mauve)">Interés (${Store.INTERES_DEFAULT}%)</span>
-                <span style="font-size:13px;font-weight:600;color:var(--mauve-deep)" id="prev-interes">—</span>
-              </div>
-              <div style="display:flex;justify-content:space-between">
-                <span style="font-size:12px;color:var(--mauve)">Penalización por mora</span>
-                <span style="font-size:12px;color:var(--warn)" id="prev-penal">${Store.PENALIZACION_DIARIA}% del capital por día de atraso</span>
-              </div>
-              <div style="height:0.5px;background:rgba(107,78,125,0.2)"></div>
-              <div style="display:flex;justify-content:space-between">
-                <span style="font-size:12px;color:var(--mauve)">Total a pagar</span>
-                <span style="font-size:17px;font-weight:700;color:var(--mauve-deep)" id="prev-total">—</span>
-              </div>
-              <div style="display:flex;justify-content:space-between">
-                <span style="font-size:12px;color:var(--mauve)">Pago por cuota</span>
-                <span style="font-size:17px;font-weight:700;color:var(--rose-deep)" id="prev-cuota">—</span>
-              </div>
-            </div>
-          </div>
+    // Fecha inicio
+    const fFecha = document.createElement('div');
+    fFecha.className = 'field';
+    fFecha.innerHTML = `<label>Fecha de inicio</label><input type="date" id="fechaInicio" value="${Fmt.today()}"/>`;
+    body.appendChild(fFecha);
 
-          <div id="tabla-preview-wrap" style="display:none">
-            <div style="font-size:12px;font-weight:600;color:var(--ink-mid);margin-bottom:8px">Tabla de pagos</div>
-            <div class="amort-wrap">
-              <table class="amort-table">
-                <thead><tr><th>#</th><th>Fecha</th><th>Monto</th><th>Saldo</th></tr></thead>
-                <tbody id="tabla-body"></tbody>
-              </table>
-            </div>
-          </div>
+    // Preview resumen
+    const preview = document.createElement('div');
+    preview.id = 'calc-preview';
+    preview.style.cssText = 'display:none;background:var(--navy-light);border-radius:var(--r-lg);padding:16px';
+    preview.innerHTML = `
+      <div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:10px;letter-spacing:0.5px">RESUMEN DEL CRÉDITO</div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;justify-content:space-between"><span style="font-size:12px;color:var(--navy-mid)">Capital</span><span style="font-size:13px;font-weight:600;color:var(--navy)" id="prev-capital">—</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="font-size:12px;color:var(--navy-mid)">Interés</span><span style="font-size:13px;font-weight:600;color:var(--navy)" id="prev-interes">—</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="font-size:12px;color:var(--navy-mid)">Número de pagos</span><span style="font-size:13px;font-weight:600;color:var(--navy)" id="prev-pagos">—</span></div>
+        <div style="height:0.5px;background:rgba(26,35,64,0.15)"></div>
+        <div style="display:flex;justify-content:space-between"><span style="font-size:12px;color:var(--navy-mid)">Total a pagar</span><span style="font-size:17px;font-weight:700;color:var(--navy)" id="prev-total">—</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="font-size:12px;color:var(--navy-mid)" id="prev-cuota-lbl">Pago por cuota</span><span style="font-size:17px;font-weight:700;color:var(--green-deep)" id="prev-cuota">—</span></div>
+      </div>`;
+    body.appendChild(preview);
 
-          <button class="btn btn-primary" id="save-btn" disabled>
-            <i class="ti ti-cash"></i> Registrar préstamo
-          </button>
-        </div>
-      </div>
-    `;
+    // Tabla
+    const tablaWrap = document.createElement('div');
+    tablaWrap.id = 'tabla-wrap';
+    tablaWrap.style.display = 'none';
+    tablaWrap.innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:var(--ink-mid);margin-bottom:8px">Tabla de pagos</div>
+      <div class="amort-wrap">
+        <table class="amort-table">
+          <thead><tr><th>#</th><th>Fecha</th><th>Total</th><th>Capital</th><th>Interés</th></tr></thead>
+          <tbody id="tabla-body"></tbody>
+        </table>
+      </div>`;
+    body.appendChild(tablaWrap);
 
-    el.querySelector('#back-btn').onclick = () => preClienteId ? App.navigate('clienteDetalle', preClienteId) : App.navigate('clientes');
+    // Botón guardar
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn btn-primary';
+    saveBtn.id = 'save-btn';
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="ti ti-cash"></i> Registrar préstamo';
+    body.appendChild(saveBtn);
 
-    const updateCalc = () => {
+    el.appendChild(body);
+
+    // ── State ──
+    let quincenasSeleccionadas = 0;
+    let frecuencia = 'semanal';
+
+    // Límite al cambiar cliente
+    el.querySelector('#cliente-sel').addEventListener('change', () => {
+      const cId = el.querySelector('#cliente-sel').value;
+      const c = Store.getCliente(cId);
+      const hint = el.querySelector('#limite-hint');
+      if (c) {
+        const limite = Store.getLimiteCliente(c);
+        hint.textContent = `Línea de crédito disponible: ${Fmt.currency(limite)}`;
+        el.querySelector('#monto').max = limite;
+      } else hint.textContent = '';
+      updateCalc();
+    });
+
+    // Frecuencia chips
+    el.querySelectorAll('.method-chip[data-frec]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        frecuencia = chip.dataset.frec;
+        el.querySelectorAll('.method-chip[data-frec]').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        updateCalc();
+      });
+    });
+
+    // Quincenas buttons
+    el.querySelectorAll('.quinc-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        quincenasSeleccionadas = parseInt(btn.dataset.q);
+        el.querySelectorAll('.quinc-btn').forEach(b => {
+          b.style.background = 'var(--sand)';
+          b.style.borderColor = 'var(--sand-mid)';
+          b.style.color = 'var(--ink-mid)';
+        });
+        btn.style.background = 'var(--navy)';
+        btn.style.borderColor = 'var(--navy)';
+        btn.style.color = '#fff';
+        const interes = getInteresPorQuincenas(quincenasSeleccionadas);
+        const badge = el.querySelector('#quinc-badge');
+        badge.style.display = 'block';
+        badge.textContent = `${quincenasSeleccionadas} quincena${quincenasSeleccionadas>1?'s':''} → ${interes}% de interés`;
+        updateCalc();
+      });
+    });
+
+    el.querySelector('#monto').addEventListener('input', updateCalc);
+    el.querySelector('#fechaInicio').addEventListener('change', updateCalc);
+
+    function updateCalc() {
       const monto = parseFloat(el.querySelector('#monto').value);
-      const interes = parseFloat(el.querySelector('#interes').value) || 0;
-      const plazo = parseInt(el.querySelector('#plazo').value);
-      const frecuencia = el.querySelector('#frecuencia').value;
-      const fechaInicio = el.querySelector('#fechaInicio').value;
       const clienteId = el.querySelector('#cliente-sel').value;
-      const preview = el.querySelector('#calc-preview');
-      const tablaWrap = el.querySelector('#tabla-preview-wrap');
-      const saveBtn = el.querySelector('#save-btn');
+      const fechaInicio = el.querySelector('#fechaInicio').value;
 
-      if (!monto || !plazo || monto < 100) { preview.style.display = 'none'; tablaWrap.style.display = 'none'; saveBtn.disabled = true; return; }
+      if (!monto || !quincenasSeleccionadas || monto < 100) {
+        preview.style.display = 'none';
+        tablaWrap.style.display = 'none';
+        saveBtn.disabled = true;
+        return;
+      }
 
-      const { total, cuota } = Store.calcPrestamo(monto, interes, plazo);
+      // Verificar límite
+      const c = Store.getCliente(clienteId);
+      if (c) {
+        const limite = Store.getLimiteCliente(c);
+        const hint = el.querySelector('#limite-hint');
+        if (monto > limite) {
+          hint.style.color = 'var(--danger)';
+          hint.textContent = `Excede el límite de ${Fmt.currency(limite)}`;
+          preview.style.display = 'none';
+          tablaWrap.style.display = 'none';
+          saveBtn.disabled = true;
+          return;
+        } else {
+          hint.style.color = 'var(--green)';
+          hint.textContent = `Línea disponible: ${Fmt.currency(limite)}`;
+        }
+      }
+
+      const interes = getInteresPorQuincenas(quincenasSeleccionadas);
+      const numPagos = getNumPagos(quincenasSeleccionadas, frecuencia);
+      const dias = getDiasFrecuencia(frecuencia);
+      const { total, cuota } = Store.calcPrestamo(monto, interes, numPagos);
+      const interesTotal = total - monto;
+      const interesPorCuota = Math.round((interesTotal / numPagos) * 100) / 100;
+      const capitalPorCuota = Math.round((monto / numPagos) * 100) / 100;
+      const frecLabel = frecuencia === 'semanal' ? 'semanal' : 'quincenal';
+
       el.querySelector('#prev-capital').textContent = Fmt.currency(monto);
-      el.querySelector('#prev-interes').textContent = Fmt.currency(total - monto);
+      el.querySelector('#prev-interes').textContent = `${Fmt.currency(interesTotal)} (${interes}%)`;
+      el.querySelector('#prev-pagos').textContent = `${numPagos} pagos ${frecLabel}es`;
       el.querySelector('#prev-total').textContent = Fmt.currency(total);
+      el.querySelector('#prev-cuota-lbl').textContent = `Pago ${frecLabel}`;
       el.querySelector('#prev-cuota').textContent = Fmt.currency(cuota);
       preview.style.display = 'block';
 
-      const freq = { semanal: 7, quincenal: 15, mensual: 30 }[frecuencia] || 15;
+      // Tabla
       const tbody = el.querySelector('#tabla-body');
-      let saldo = total;
       tbody.innerHTML = '';
-      for (let i = 1; i <= plazo; i++) {
+      let saldo = total;
+      for (let i = 1; i <= numPagos; i++) {
         const fecha = new Date(fechaInicio + 'T00:00:00');
-        fecha.setDate(fecha.getDate() + freq * i);
+        fecha.setDate(fecha.getDate() + dias * i);
         saldo = Math.max(0, Math.round((saldo - cuota) * 100) / 100);
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${i}</td><td>${Fmt.date(fecha.toISOString().split('T')[0])}</td><td>${Fmt.currency(cuota)}</td><td>${Fmt.currency(saldo)}</td>`;
+        tr.innerHTML = `<td>${i}</td><td>${Fmt.date(fecha.toISOString().split('T')[0])}</td><td>${Fmt.currency(cuota)}</td><td>${Fmt.currency(capitalPorCuota)}</td><td>${Fmt.currency(interesPorCuota)}</td>`;
         tbody.appendChild(tr);
       }
       tablaWrap.style.display = 'block';
       saveBtn.disabled = !clienteId;
-    };
+    }
 
-    ['#monto','#interes','#plazo','#frecuencia','#fechaInicio','#cliente-sel'].forEach(sel => {
-      el.querySelector(sel).addEventListener('input', updateCalc);
-      el.querySelector(sel).addEventListener('change', updateCalc);
-    });
-
-    if (preClienteId) setTimeout(updateCalc, 50);
-
-    el.querySelector('#save-btn').addEventListener('click', async () => {
+    saveBtn.addEventListener('click', async () => {
       const clienteId = el.querySelector('#cliente-sel').value;
       const monto = parseFloat(el.querySelector('#monto').value);
-      const interes = parseFloat(el.querySelector('#interes').value) || 0;
-      const plazo = parseInt(el.querySelector('#plazo').value);
-      const frecuencia = el.querySelector('#frecuencia').value;
       const fechaInicio = el.querySelector('#fechaInicio').value;
-      if (!clienteId || !monto || !plazo) { Toast.error('Completa los campos obligatorios'); return; }
-      const { total, cuota } = Store.calcPrestamo(monto, interes, plazo);
-      await Store.addPrestamo({ clienteId, monto, interes, plazo, frecuencia, fechaInicio, totalConInteres: total, pagoCuota: cuota });
-      Toast.success('Préstamo registrado');
-      App.navigate('clienteDetalle', clienteId);
+      if (!clienteId || !monto || !quincenasSeleccionadas) { Toast.error('Completa todos los campos'); return; }
+      const interes = getInteresPorQuincenas(quincenasSeleccionadas);
+      const numPagos = getNumPagos(quincenasSeleccionadas, frecuencia);
+      const { total, cuota } = Store.calcPrestamo(monto, interes, numPagos);
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="ti ti-loader"></i> Guardando...';
+      try {
+        await Store.addPrestamo({
+          clienteId, monto, interes, quincenas: quincenasSeleccionadas,
+          plazo: numPagos, frecuencia, fechaInicio,
+          totalConInteres: total, pagoCuota: cuota,
+        });
+        Toast.success('Préstamo registrado');
+        App.navigate('clienteDetalle', clienteId);
+      } catch(e) {
+        Toast.error('Error al guardar');
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="ti ti-cash"></i> Registrar préstamo';
+      }
     });
 
     return el;
@@ -2020,6 +2376,316 @@ const Modal = {
     return el;
   }
 };
+</script><script>const Solicitudes = {
+  render() {
+    const solicitudes = Store.getSolicitudesPendientes();
+    const el = document.createElement('div');
+
+    const header = document.createElement('div');
+    header.className = 'page-header';
+    header.style.padding = '14px 20px 16px';
+    header.innerHTML = `
+      <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
+      <div style="padding-left:36px">
+        <h1>Solicitudes</h1>
+        <p>${solicitudes.length} pendiente${solicitudes.length !== 1 ? 's' : ''} de revisión</p>
+      </div>`;
+    el.appendChild(header);
+    el.querySelector('#back-btn').onclick = () => App.navigate('dashboard');
+
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:12px 16px 80px';
+
+    if (solicitudes.length === 0) {
+      body.innerHTML = `
+        <div class="empty-state" style="padding-top:40px">
+          <i class="ti ti-inbox"></i>
+          <h3>Sin solicitudes pendientes</h3>
+          <p>Cuando un cliente llene el formulario, aparecerá aquí para que lo revises.</p>
+        </div>`;
+    } else {
+      solicitudes.forEach(sol => {
+        const card = document.createElement('div');
+        card.style.cssText = 'background:var(--white);border:0.5px solid var(--sand-mid);border-radius:var(--r-lg);padding:14px;margin-bottom:10px';
+
+        const interes = Store.getInteresPorSemanas(sol.semanas);
+        const { total, cuota } = Store.calcPrestamo(sol.monto, interes, sol.semanas);
+        const fecha = new Date(sol.createdAt).toLocaleDateString('es-MX');
+
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+            <div>
+              <div style="font-size:15px;font-weight:600;color:var(--ink)">${sol.nombre}</div>
+              <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${sol.telefono} · ${fecha}</div>
+            </div>
+            <span class="badge badge-warn">Pendiente</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+            <div style="background:var(--sand);border-radius:var(--r-md);padding:8px;text-align:center">
+              <div style="font-size:14px;font-weight:700;color:var(--navy)">${Fmt.currency(sol.monto)}</div>
+              <div style="font-size:9px;color:var(--ink-soft)">Monto</div>
+            </div>
+            <div style="background:var(--sand);border-radius:var(--r-md);padding:8px;text-align:center">
+              <div style="font-size:14px;font-weight:700;color:var(--navy)">${sol.semanas} sem.</div>
+              <div style="font-size:9px;color:var(--ink-soft)">${interes}% interés</div>
+            </div>
+            <div style="background:var(--sand);border-radius:var(--r-md);padding:8px;text-align:center">
+              <div style="font-size:14px;font-weight:700;color:var(--green-deep)">${Fmt.currency(cuota)}</div>
+              <div style="font-size:9px;color:var(--ink-soft)">Por semana</div>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--ink-mid);margin-bottom:10px">
+            <i class="ti ti-map-pin" style="font-size:12px"></i> ${[sol.calle, sol.numExt ? '#'+sol.numExt : '', sol.colonia, sol.ciudad].filter(Boolean).join(', ')}
+          </div>
+          ${sol.firmaClienteUrl ? `
+            <div style="margin-bottom:10px">
+              <div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px">FIRMA DEL CLIENTE</div>
+              <div style="background:var(--sand);border-radius:var(--r-md);padding:8px">
+                <img src="${sol.firmaClienteUrl}" style="height:50px;width:auto;max-width:100%;object-fit:contain"/>
+              </div>
+            </div>` : ''}
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary btn-sm" data-id="${sol.id}" data-action="ver" style="flex:1">
+              <i class="ti ti-eye"></i> Ver detalle
+            </button>
+            <button class="btn btn-danger btn-sm" data-id="${sol.id}" data-action="rechazar" style="flex:1">
+              <i class="ti ti-x"></i> Rechazar
+            </button>
+            <button class="btn btn-success btn-sm" data-id="${sol.id}" data-action="autorizar" style="flex:2">
+              <i class="ti ti-check"></i> Autorizar
+            </button>
+          </div>`;
+        body.appendChild(card);
+      });
+    }
+
+    el.appendChild(body);
+
+    // Event listeners
+    body.querySelectorAll('button[data-action]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const action = btn.dataset.action;
+        const sol = Store.getSolicitudes().find(s => s.id === id);
+
+        if (action === 'ver') {
+          App.navigate('verSolicitud', id);
+        } else if (action === 'rechazar') {
+          if (!confirm('¿Rechazar esta solicitud?')) return;
+          await Store.rechazarSolicitud(id);
+          Toast.success('Solicitud rechazada');
+          App.renderView();
+        } else if (action === 'autorizar') {
+          btn.disabled = true;
+          btn.innerHTML = '<i class="ti ti-loader"></i> Autorizando...';
+          try {
+            const { clienteId, prestamo } = await Store.autorizarSolicitud(id);
+            const cliente = Store.getCliente(clienteId);
+
+            // WhatsApp al cliente
+            if (sol && cliente && sol.telefono) {
+              const interes = Store.getInteresPorSemanas(sol.semanas);
+              const { total, cuota } = Store.calcPrestamo(sol.monto, interes, sol.semanas);
+              const tabla = Store.getTableraAmortizacion(prestamo);
+              const tablaTexto = tabla.map(c =>
+                `  Semana ${c.num} (${Fmt.date(c.fecha)}): ${Fmt.currency(c.monto)}`
+              ).join('\n');
+
+              const msg = 'Hola *' + sol.nombre.split(' ')[0] + '* 🎉\n\n'
+                + '¡Tu solicitud de préstamo ha sido *AUTORIZADA*! 🪙\n\n'
+                + '📋 *Detalles de tu crédito:*\n'
+                + '💰 Monto: ' + Fmt.currency(sol.monto) + '\n'
+                + '📅 Plazo: ' + sol.semanas + ' semana' + (sol.semanas>1?'s':'') + '\n'
+                + '📈 Interés: ' + interes + '%\n'
+                + '💵 Pago semanal: ' + Fmt.currency(cuota) + '\n'
+                + '🏦 Total a pagar: ' + Fmt.currency(total) + '\n\n'
+                + '📆 *Tabla de pagos:*\n' + tablaTexto + '\n\n'
+                + 'Gracias por confiar en nosotros 😊\n\n'
+                + '*Varito* · Tu dinerito, siempre a la mano';
+
+              setTimeout(() => window.open(
+                'https://wa.me/52' + sol.telefono + '?text=' + encodeURIComponent(msg), '_blank'
+              ), 500);
+            }
+
+            Toast.success('Préstamo autorizado y cliente notificado');
+            App.navigate('clienteDetalle', clienteId);
+          } catch(e) {
+            console.error(e);
+            Toast.error('Error al autorizar');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ti ti-check"></i> Autorizar';
+          }
+        }
+      });
+    });
+
+    return el;
+  }
+};
+</script><script>const Configuracion = {
+  render() {
+    const firmaExistente = Store.getFirmaYaretzi();
+    const el = document.createElement('div');
+
+    const header = document.createElement('div');
+    header.className = 'page-header';
+    header.style.padding = '14px 20px 16px';
+    header.innerHTML = `
+      <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
+      <div style="padding-left:36px"><h1>Configuración</h1><p>Firma de Yaretzi</p></div>`;
+    el.appendChild(header);
+    el.querySelector('#back-btn').onclick = () => App.navigate('dashboard');
+
+    const body = document.createElement('div');
+    body.style.padding = '16px';
+    body.style.paddingBottom = '80px';
+
+    // Info
+    const info = document.createElement('div');
+    info.className = 'info-box';
+    info.style.marginBottom = '16px';
+    info.innerHTML = `<i class="ti ti-info-circle"></i><span>Dibuja tu firma con el dedo o con el mouse. Se usará automáticamente en todos los pagarés como firma de la acreedora.</span>`;
+    body.appendChild(info);
+
+    // Firma existente
+    if (firmaExistente) {
+      const existente = document.createElement('div');
+      existente.style.cssText = 'margin-bottom:16px;background:var(--sand);border-radius:var(--r-lg);padding:14px';
+      existente.innerHTML = `
+        <div style="font-size:11px;font-weight:600;color:var(--ink-soft);margin-bottom:8px">FIRMA ACTUAL</div>
+        <img src="${firmaExistente}" style="max-width:100%;height:80px;object-fit:contain;display:block"/>`;
+      body.appendChild(existente);
+    }
+
+    // Canvas para firma
+    const canvasWrap = document.createElement('div');
+    canvasWrap.style.cssText = 'border:2px dashed var(--green);border-radius:var(--r-lg);background:#fff;margin-bottom:12px;position:relative;overflow:hidden';
+
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:11px;font-weight:600;color:var(--ink-soft);padding:10px 14px 4px;letter-spacing:0.5px';
+    label.textContent = firmaExistente ? 'NUEVA FIRMA' : 'DIBUJA TU FIRMA AQUÍ';
+    canvasWrap.appendChild(label);
+
+    const canvas = document.createElement('canvas');
+    canvas.id = 'firma-canvas';
+    canvas.style.cssText = 'display:block;width:100%;touch-action:none;cursor:crosshair';
+    canvas.height = 160;
+    canvasWrap.appendChild(canvas);
+
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:10px;color:var(--ink-soft);padding:4px 14px 10px';
+    hint.textContent = 'Usa el dedo o mouse para firmar';
+    canvasWrap.appendChild(hint);
+    body.appendChild(canvasWrap);
+
+    // Botones canvas
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;margin-bottom:16px';
+
+    const btnBorrar = document.createElement('button');
+    btnBorrar.className = 'btn btn-secondary';
+    btnBorrar.style.flex = '1';
+    btnBorrar.innerHTML = '<i class="ti ti-eraser"></i> Borrar';
+    btnRow.appendChild(btnBorrar);
+
+    const btnGuardar = document.createElement('button');
+    btnGuardar.className = 'btn btn-primary';
+    btnGuardar.style.flex = '2';
+    btnGuardar.innerHTML = '<i class="ti ti-check"></i> Guardar firma';
+    btnRow.appendChild(btnGuardar);
+    body.appendChild(btnRow);
+
+    el.appendChild(body);
+
+    // ── Canvas drawing logic ──
+    let isDrawing = false;
+    let hasDrawn = false;
+    let ctx = null;
+
+    const initCanvas = () => {
+      canvas.width = canvas.offsetWidth;
+      ctx = canvas.getContext('2d');
+      ctx.strokeStyle = '#1A2340';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    };
+
+    const getPos = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      if (e.touches) {
+        return {
+          x: (e.touches[0].clientX - rect.left) * scaleX,
+          y: (e.touches[0].clientY - rect.top) * scaleY,
+        };
+      }
+      return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY,
+      };
+    };
+
+    const startDraw = (e) => {
+      e.preventDefault();
+      if (!ctx) initCanvas();
+      isDrawing = true;
+      hasDrawn = true;
+      const pos = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+    };
+
+    const draw = (e) => {
+      e.preventDefault();
+      if (!isDrawing || !ctx) return;
+      const pos = getPos(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+    };
+
+    const endDraw = (e) => {
+      e.preventDefault();
+      isDrawing = false;
+    };
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', endDraw);
+    canvas.addEventListener('mouseleave', endDraw);
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    canvas.addEventListener('touchend', endDraw, { passive: false });
+
+    setTimeout(initCanvas, 100);
+
+    btnBorrar.onclick = () => {
+      if (!ctx) initCanvas();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasDrawn = false;
+    };
+
+    btnGuardar.addEventListener('click', async () => {
+      if (!hasDrawn) { Toast.error('Dibuja tu firma primero'); return; }
+      btnGuardar.disabled = true;
+      btnGuardar.innerHTML = '<i class="ti ti-loader"></i> Guardando...';
+      try {
+        const firmaUrl = canvas.toDataURL('image/png');
+        await Store.guardarFirmaYaretzi(firmaUrl);
+        Toast.success('Firma guardada correctamente');
+        App.navigate('dashboard');
+      } catch(e) {
+        Toast.error('Error al guardar la firma');
+        btnGuardar.disabled = false;
+        btnGuardar.innerHTML = '<i class="ti ti-check"></i> Guardar firma';
+      }
+    });
+
+    return el;
+  }
+};
 </script><script>const App = {
   route: 'dashboard',
   param: null,
@@ -2036,8 +2702,7 @@ const Modal = {
     const tabBar = document.getElementById('tab-bar');
     viewEl.innerHTML = '';
 
-    // Show loading if Firebase not ready yet
-    if (!Store.isLoaded() && ['dashboard','clientes','reportes'].includes(this.route)) {
+    if (!Store.isLoaded() && ['dashboard','clientes','reportes','solicitudes'].includes(this.route)) {
       viewEl.innerHTML = `
         <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:40px;min-height:60vh">
           <img src="https://enriquerocham.github.io/varito/%C3%8DCONO.png" alt="Varito" style="width:72px;height:72px;object-fit:contain"/>
@@ -2048,7 +2713,7 @@ const Modal = {
       return;
     }
 
-    const noTabRoutes = ['nuevoCliente','editarCliente','nuevoPrestamo','registrarPago','verTabla'];
+    const noTabRoutes = ['nuevoCliente','editarCliente','nuevoPrestamo','registrarPago','verTabla','configuracion','solicitudes'];
     tabBar.style.display = noTabRoutes.includes(this.route) ? 'none' : 'flex';
 
     const views = {
@@ -2061,6 +2726,10 @@ const Modal = {
       registrarPago:  () => RegistrarPago.render(this.param),
       verTabla:       () => Documentos.render(this.param),
       reportes:       () => Reportes.render(),
+      solicitudes:    () => Solicitudes.render(),
+      configuracion:  () => Configuracion.render(),
+      configuracion:  () => Configuracion.render(),
+      solicitudes:    () => Solicitudes.render(),
     };
 
     const renderFn = views[this.route];
@@ -2070,13 +2739,12 @@ const Modal = {
     }
 
     const tabMap = { dashboard: 0, clientes: 1, reportes: 3 };
-    document.querySelectorAll('.tab').forEach((t, i) =>
+    document.querySelectorAll('.tab').forEach((t,i) =>
       t.classList.toggle('active', i === (tabMap[this.route] ?? -1)));
   },
 
   init() {
     Toast.init();
-
     const shell = document.createElement('div');
     shell.className = 'app-shell';
     shell.id = 'shell';
@@ -2091,29 +2759,22 @@ const Modal = {
     tabBar.id = 'tab-bar';
     tabBar.innerHTML = `
       <button class="tab active" onclick="App.navigate('dashboard')">
-        <i class="ti ti-home tab-icon"></i>
-        <span class="tab-lbl">Inicio</span>
+        <i class="ti ti-home tab-icon"></i><span class="tab-lbl">Inicio</span>
       </button>
       <button class="tab" onclick="App.navigate('clientes')">
-        <i class="ti ti-users tab-icon"></i>
-        <span class="tab-lbl">Clientes</span>
+        <i class="ti ti-users tab-icon"></i><span class="tab-lbl">Clientes</span>
       </button>
       <button class="tab" onclick="App.navigate('nuevoPrestamo')">
-        <i class="ti ti-cash tab-icon"></i>
-        <span class="tab-lbl">Préstamo</span>
+        <i class="ti ti-cash tab-icon"></i><span class="tab-lbl">Préstamo</span>
       </button>
       <button class="tab" onclick="App.navigate('reportes')">
-        <i class="ti ti-chart-bar tab-icon"></i>
-        <span class="tab-lbl">Reportes</span>
-      </button>
-    `;
+        <i class="ti ti-chart-bar tab-icon"></i><span class="tab-lbl">Reportes</span>
+      </button>`;
     shell.appendChild(tabBar);
     document.getElementById('app').appendChild(shell);
 
-    // Subscribe to Firebase data changes → re-render
     Store.subscribe(() => App.renderView());
     Store.init();
-
     this.renderView();
   }
 };

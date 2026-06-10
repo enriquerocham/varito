@@ -21,28 +21,30 @@
   --ink:#1A2340;--ink-mid:#4A5568;--ink-soft:#90A4A0;
   --white:#fff;--danger:#C62828;--danger-light:#FFEBEE;
   --warn:#F57F17;--warn-light:#FFF8E1;
-  --r-md:12px;--r-lg:18px;--r-xl:28px;--r-pill:999px;
+  --r-md:12px;--r-lg:18px;--r-xl:24px;
 }
 body{font-family:'Inter',sans-serif;background:var(--sand);color:var(--ink);min-height:100vh}
 .shell{max-width:430px;margin:0 auto;background:var(--white);min-height:100vh;display:flex;flex-direction:column}
-.top{background:var(--navy);padding:20px;display:flex;align-items:center;gap:12px}
-.top img{height:36px;width:auto}
-.top-text h1{font-size:16px;font-weight:600;color:#fff}
+.top{background:var(--navy);padding:16px 20px;display:flex;align-items:center;gap:14px}
+.top img{height:44px;width:44px;object-fit:contain;border-radius:50%}
+.top-text h1{font-size:17px;font-weight:600;color:#fff}
 .top-text p{font-size:11px;color:rgba(255,255,255,0.55);margin-top:2px}
-.steps{display:flex;justify-content:center;gap:6px;padding:14px 16px;border-bottom:0.5px solid var(--sand-mid)}
-.step{width:28px;height:4px;border-radius:2px;background:var(--sand-mid);transition:background 0.3s}
+.steps{display:flex;justify-content:center;gap:6px;padding:12px 16px;border-bottom:0.5px solid var(--sand-mid)}
+.step{height:4px;border-radius:2px;background:var(--sand-mid);transition:background 0.3s;flex:1;max-width:60px}
 .step.active{background:var(--green)}
 .step.done{background:var(--navy)}
-.section{padding:16px;display:flex;flex-direction:column;gap:12px}
-.section-lbl{font-size:11px;font-weight:700;color:var(--navy);letter-spacing:1px;padding:4px 0 2px}
+.section{padding:16px;display:flex;flex-direction:column;gap:12px;padding-bottom:32px}
+.section-lbl{font-size:11px;font-weight:700;color:var(--navy);letter-spacing:1px;padding:4px 0 2px;text-transform:uppercase}
 .field{display:flex;flex-direction:column;gap:5px}
 .field label{font-size:11px;font-weight:600;color:var(--ink-soft);letter-spacing:0.5px;text-transform:uppercase}
-.field input,.field select{padding:11px 14px;border-radius:var(--r-md);border:1px solid var(--sand-mid);background:var(--sand);font-size:14px;color:var(--ink);font-family:'Inter',sans-serif;outline:none;-webkit-appearance:none;transition:border 0.15s}
+.field input,.field select{padding:11px 14px;border-radius:var(--r-md);border:1px solid var(--sand-mid);background:var(--sand);font-size:14px;color:var(--ink);font-family:'Inter',sans-serif;outline:none;-webkit-appearance:none;transition:border 0.15s;width:100%}
 .field input:focus,.field select:focus{border-color:var(--green);background:var(--white)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.semana-btn{padding:12px 4px;border-radius:var(--r-md);border:1.5px solid var(--sand-mid);background:var(--sand);font-size:14px;font-weight:600;color:var(--ink-mid);cursor:pointer;transition:all 0.15s;text-align:center}
-.semana-btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
-.semanas-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.quinc-btn{padding:10px 4px;border-radius:var(--r-md);border:1.5px solid var(--sand-mid);background:var(--sand);font-size:13px;font-weight:600;color:var(--ink-mid);cursor:pointer;transition:all 0.15s;text-align:center;width:100%}
+.quinc-btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.frec-btn{padding:10px;border-radius:var(--r-md);border:1.5px solid var(--sand-mid);background:var(--sand);font-size:13px;font-weight:500;color:var(--ink-mid);cursor:pointer;transition:all 0.15s;text-align:center;width:100%}
+.frec-btn.active{background:var(--green-light);border-color:var(--green);color:var(--green-deep);font-weight:600}
+.quinc-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
 .interes-badge{display:none;padding:8px 12px;background:var(--green-light);border-radius:var(--r-md);font-size:12px;color:var(--green-deep);font-weight:500}
 .calc-box{background:var(--navy-light);border-radius:var(--r-lg);padding:14px;display:none}
 .calc-row{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:0.5px solid rgba(26,35,64,0.1)}
@@ -53,435 +55,527 @@ body{font-family:'Inter',sans-serif;background:var(--sand);color:var(--ink);min-
 .amort-table{width:100%;border-collapse:collapse;font-size:11px}
 .amort-table th{background:var(--navy-light);color:var(--navy);font-weight:600;padding:7px 8px;text-align:left}
 .amort-table td{padding:7px 8px;border-bottom:0.5px solid var(--sand-mid);color:var(--ink-mid)}
-.canvas-wrap{border:2px dashed var(--green);border-radius:var(--r-lg);background:#fff;position:relative;overflow:hidden}
-.canvas-lbl{font-size:11px;font-weight:600;color:var(--ink-soft);padding:10px 14px 4px;letter-spacing:0.5px}
+.photo-zone{border:1.5px dashed var(--green);border-radius:var(--r-lg);padding:16px;text-align:center;background:var(--green-light);cursor:pointer}
+.photo-zone i{font-size:24px;color:var(--green);margin-bottom:6px;display:block}
+.photo-zone .pz-lbl{font-size:12px;color:var(--green-deep);font-weight:500}
+.photo-zone .pz-sub{font-size:10px;color:var(--green);margin-top:2px}
+.photo-preview{border-radius:var(--r-md);overflow:hidden;background:var(--sand-mid);position:relative;display:none}
+.photo-preview img{width:100%;max-height:140px;object-fit:cover;display:block}
+.photo-rm{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(26,35,64,0.7);border:none;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.canvas-wrap{border:2px dashed var(--green);border-radius:var(--r-lg);background:#fff;overflow:hidden}
+.canvas-lbl{font-size:11px;font-weight:600;color:var(--ink-soft);padding:8px 14px 2px;letter-spacing:0.5px}
 #firma-canvas{display:block;width:100%;touch-action:none;cursor:crosshair}
-.canvas-hint{font-size:10px;color:var(--ink-soft);padding:4px 14px 10px}
+.canvas-hint{font-size:10px;color:var(--ink-soft);padding:3px 14px 8px}
 .btn{padding:13px;border-radius:var(--r-lg);font-size:14px;font-weight:600;border:none;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Inter',sans-serif;transition:opacity 0.15s}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
 .btn-primary{background:var(--navy);color:#fff}
-.btn-primary:hover{opacity:0.9}
-.btn-primary:disabled{opacity:0.5;cursor:not-allowed}
-.btn-secondary{background:var(--sand);border:1px solid var(--sand-mid);color:var(--ink-mid)}
 .btn-success{background:var(--green);color:#fff}
+.btn-secondary{background:var(--sand);border:1px solid var(--sand-mid);color:var(--ink-mid)}
 .btn-row{display:flex;gap:8px}
 .info-box{background:var(--sand);border-radius:var(--r-md);padding:10px 12px;font-size:12px;color:var(--ink-mid);line-height:1.6;display:flex;gap:8px}
 .info-box i{color:var(--green);font-size:15px;flex-shrink:0;margin-top:1px}
+.error-msg{color:var(--danger);font-size:12px;display:none;padding:4px 0}
 .success-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;gap:16px;flex:1;text-align:center}
 .success-screen h2{font-size:20px;font-weight:600;color:var(--ink)}
 .success-screen p{font-size:14px;color:var(--ink-mid);line-height:1.7}
-.error-msg{color:var(--danger);font-size:12px;display:none}
 </style>
 </head>
 <body>
 <div class="shell">
   <div class="top">
-    <img src="https://enriquerocham.github.io/varito/ÍCONO.png" alt="Varito" onerror="this.style.display='none'"/>
+    <img src="https://enriquerocham.github.io/varito/%C3%8DCONO.png" alt="Varito" onerror="this.style.display='none'"/>
     <div class="top-text">
       <h1>Solicitud de préstamo</h1>
       <p>Varito · Tu dinerito, siempre a la mano</p>
     </div>
   </div>
-
-  <div class="steps">
-    <div class="step active" id="step-1"></div>
-    <div class="step" id="step-2"></div>
-    <div class="step" id="step-3"></div>
-    <div class="step" id="step-4"></div>
+  <div class="steps" id="steps-bar">
+    <div class="step active" id="s1"></div>
+    <div class="step" id="s2"></div>
+    <div class="step" id="s3"></div>
+    <div class="step" id="s4"></div>
+    <div class="step" id="s5"></div>
   </div>
-
-  <div id="main-content"></div>
+  <div id="main"></div>
 </div>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyCDYns_aIfO87mtln-ORna-9sL_7Xm1IBk",
-  authDomain: "varito-46d22.firebaseapp.com",
-  projectId: "varito-46d22",
-  storageBucket: "varito-46d22.firebasestorage.app",
-  messagingSenderId: "228917831433",
-  appId: "1:228917831433:web:8487695ba7d8c44d5e95d8"
-};
-firebase.initializeApp(firebaseConfig);
+firebase.initializeApp({
+  apiKey:"AIzaSyCDYns_aIfO87mtln-ORna-9sL_7Xm1IBk",
+  authDomain:"varito-46d22.firebaseapp.com",
+  projectId:"varito-46d22",
+  storageBucket:"varito-46d22.firebasestorage.app",
+  messagingSenderId:"228917831433",
+  appId:"1:228917831433:web:8487695ba7d8c44d5e95d8"
+});
 const db = firebase.firestore();
 
-const getInteresPorQuincenas = (q) => q <= 2 ? 30 : q <= 4 ? 40 : 50;
-const getNumPagos = (q, frec) => frec === 'semanal' ? q * 2 : q;
-const getDias = (frec) => frec === 'semanal' ? 7 : 15;
-const fmtCurrency = (n) => '$' + Number(n).toLocaleString('es-MX', {minimumFractionDigits:2,maximumFractionDigits:2});
-const fmtDate = (str) => {
-  const [y,m,d] = str.split('-');
-  const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-  return parseInt(d)+' '+months[parseInt(m)-1]+' '+y;
-};
+// ── Helpers ──
+const getInteres = q => q<=2?30:q<=4?40:50;
+const getNumPagos = (q,f) => f==='semanal'?q*2:q;
+const getDias = f => f==='semanal'?7:15;
+const fmtC = n => '$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtD = str => { if(!str)return'—'; const[y,m,d]=str.split('-'); const ms=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']; return parseInt(d)+' '+ms[parseInt(m)-1]+' '+y; };
 const today = () => new Date().toISOString().split('T')[0];
 
-let formData = {};
+let step = 1;
+let fd = {}; // form data
 let quincenas = 0;
 let frecuencia = 'semanal';
 let firmaUrl = null;
-let step = 1;
+let fotoIneUrl = null;
+let fotoDomUrl = null;
 let hasDrawn = false;
 
 function setStep(n) {
   step = n;
-  [1,2,3,4].forEach(i => {
-    const el = document.getElementById('step-'+i);
-    el.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
+  [1,2,3,4,5].forEach(i => {
+    const el = document.getElementById('s'+i);
+    if(!el) return;
+    el.className = 'step' + (i<n?' done':i===n?' active':'');
   });
 }
 
 function render() {
-  const c = document.getElementById('main-content');
+  const c = document.getElementById('main');
   c.innerHTML = '';
-  if (step === 1) renderStep1(c);
-  else if (step === 2) renderStep2(c);
-  else if (step === 3) renderStep3(c);
-  else if (step === 4) renderStep4(c);
+  if(step===1) s1(c);
+  else if(step===2) s2(c);
+  else if(step===3) s3(c);
+  else if(step===4) s4(c);
+  else if(step===5) s5(c);
   else renderSuccess(c);
 }
 
-function renderStep1(c) {
-  const s = document.createElement('div');
-  s.className = 'section';
-  s.innerHTML = `
-    <div class="info-box"><i class="ti ti-info-circle"></i><span>Llena todos tus datos personales. La información es confidencial y solo la verá la titular del negocio.</span></div>
-    <div class="section-lbl">Datos personales</div>
-    <div class="field"><label>Nombre completo *</label><input id="nombre" type="text" placeholder="Nombre y apellidos" value="${formData.nombre||''}"/></div>
-    <div class="field"><label>Teléfono / WhatsApp *</label><input id="telefono" type="tel" placeholder="10 dígitos" maxlength="10" value="${formData.telefono||''}"/></div>
-    <div class="field"><label>Fecha de nacimiento *</label><input id="fechaNacimiento" type="date" value="${formData.fechaNacimiento||''}"/></div>
-    <div class="field"><label>Clave de elector (INE) *</label><input id="ine" type="text" placeholder="Ej: GOPL850412..." style="text-transform:uppercase" value="${formData.ine||''}"/></div>
-    <div class="section-lbl" style="margin-top:8px">Domicilio</div>
-    <div class="grid2">
-      <div class="field"><label>Calle *</label><input id="calle" type="text" placeholder="Nombre de calle" value="${formData.calle||''}"/></div>
-      <div class="field"><label>Núm. exterior *</label><input id="numExt" type="text" placeholder="Ej: 12" value="${formData.numExt||''}"/></div>
-    </div>
-    <div class="grid2">
-      <div class="field"><label>Núm. interior</label><input id="numInt" type="text" placeholder="Opcional" value="${formData.numInt||''}"/></div>
-      <div class="field"><label>Código postal *</label><input id="cp" type="text" placeholder="Ej: 66050" maxlength="5" value="${formData.cp||''}"/></div>
-    </div>
-    <div class="field"><label>Colonia *</label><input id="colonia" type="text" placeholder="Nombre de colonia" value="${formData.colonia||''}"/></div>
-    <div class="field"><label>Ciudad / Municipio *</label><input id="ciudad" type="text" placeholder="Ej: García, N.L." value="${formData.ciudad||''}"/></div>
-    <p id="err1" class="error-msg"></p>
-    <button class="btn btn-primary" id="btn1">Siguiente <i class="ti ti-arrow-right"></i></button>`;
-  c.appendChild(s);
+// ── Step 1: Datos personales ──
+function s1(c) {
+  const sec = document.createElement('div');
+  sec.className = 'section';
 
-  document.getElementById('btn1').onclick = () => {
-    const nombre = document.getElementById('nombre').value.trim();
-    const telefono = document.getElementById('telefono').value.trim();
-    const fechaNacimiento = document.getElementById('fechaNacimiento').value;
-    const ine = document.getElementById('ine').value.trim().toUpperCase();
-    const calle = document.getElementById('calle').value.trim();
-    const numExt = document.getElementById('numExt').value.trim();
-    const cp = document.getElementById('cp').value.trim();
-    const colonia = document.getElementById('colonia').value.trim();
-    const ciudad = document.getElementById('ciudad').value.trim();
-    const err = document.getElementById('err1');
-    if (!nombre||!telefono||!fechaNacimiento||!ine||!calle||!numExt||!cp||!colonia||!ciudad) {
-      err.textContent = 'Por favor completa todos los campos obligatorios.';
-      err.style.display = 'block'; return;
+  appendInfo(sec, 'Todos los campos son obligatorios. Tu información es confidencial.');
+
+  appendLbl(sec, 'Datos personales');
+  appendField(sec, 'nombre', 'Nombre completo *', 'text', 'Nombre y apellidos completos', fd.nombre||'');
+  appendField(sec, 'telefono', 'Teléfono / WhatsApp *', 'tel', '10 dígitos', fd.telefono||'', {maxlength:'10'});
+  appendField(sec, 'fechaNacimiento', 'Fecha de nacimiento *', 'date', '', fd.fechaNacimiento||'');
+  appendField(sec, 'ine', 'Clave de elector (INE) *', 'text', 'Ej: GOPL850412MNLNRR04', fd.ine||'', {style:'text-transform:uppercase'});
+
+  appendLbl(sec, 'Domicilio');
+  const g1 = appendGrid(sec);
+  appendField(g1, 'calle', 'Calle *', 'text', 'Nombre de la calle', fd.calle||'');
+  appendField(g1, 'numExt', 'Núm. exterior *', 'text', 'Ej: 12', fd.numExt||'');
+  const g2 = appendGrid(sec);
+  appendField(g2, 'numInt', 'Núm. interior', 'text', 'Opcional', fd.numInt||'');
+  appendField(g2, 'cp', 'Código postal *', 'text', 'Ej: 66050', fd.cp||'', {maxlength:'5'});
+  appendField(sec, 'colonia', 'Colonia *', 'text', 'Nombre de la colonia', fd.colonia||'');
+  appendField(sec, 'ciudad', 'Ciudad / Municipio *', 'text', 'Ej: García, N.L.', fd.ciudad||'');
+
+  const err = appendErr(sec, 'err1');
+  const btnRow = document.createElement('div');
+  btnRow.className = 'btn-row';
+  const btnNext = appendBtn(btnRow, 'Siguiente →', 'btn-primary', null);
+  sec.appendChild(btnRow);
+  c.appendChild(sec);
+
+  btnNext.onclick = () => {
+    const nombre = val('nombre');
+    const telefono = val('telefono');
+    const fechaNacimiento = val('fechaNacimiento');
+    const ine = val('ine').toUpperCase();
+    const calle = val('calle');
+    const numExt = val('numExt');
+    const cp = val('cp');
+    const colonia = val('colonia');
+    const ciudad = val('ciudad');
+    if(!nombre||!telefono||!fechaNacimiento||!ine||!calle||!numExt||!cp||!colonia||!ciudad){
+      showErr('err1','Completa todos los campos obligatorios.'); return;
     }
-    if (telefono.length !== 10) { err.textContent = 'El teléfono debe tener 10 dígitos.'; err.style.display = 'block'; return; }
-    Object.assign(formData, { nombre, telefono, fechaNacimiento, ine, calle, numExt, numInt: document.getElementById('numInt').value.trim(), cp, colonia, ciudad });
+    if(telefono.length!==10){showErr('err1','El teléfono debe tener 10 dígitos.'); return;}
+    Object.assign(fd,{nombre,telefono,fechaNacimiento,ine,calle,numExt,numInt:val('numInt'),cp,colonia,ciudad});
     setStep(2); render();
   };
 }
 
-function renderStep2(c) {
-  const s = document.createElement('div');
-  s.className = 'section';
-  s.innerHTML = `
-    <div class="section-lbl">Referencia personal</div>
-    <div class="info-box"><i class="ti ti-user"></i><span>Proporciona una referencia de confianza. Debe ser alguien que te conozca bien.</span></div>
-    <div class="field"><label>Nombre completo *</label><input id="refNombre" type="text" placeholder="Nombre completo" value="${formData.refNombre||''}"/></div>
-    <div class="field"><label>Parentesco *</label><input id="refParentesco" type="text" placeholder="Ej: Madre, Hermano, Amigo..." value="${formData.refParentesco||''}"/></div>
-    <div class="field"><label>Teléfono *</label><input id="refTelefono" type="tel" placeholder="10 dígitos" maxlength="10" value="${formData.refTelefono||''}"/></div>
-    <div class="field"><label>Dirección (opcional)</label><input id="refDireccion" type="text" placeholder="Calle, número, colonia" value="${formData.refDireccion||''}"/></div>
-    <p id="err2" class="error-msg"></p>
-    <div class="btn-row">
-      <button class="btn btn-secondary" id="btn2back" style="flex:1"><i class="ti ti-arrow-left"></i> Atrás</button>
-      <button class="btn btn-primary" id="btn2" style="flex:2">Siguiente <i class="ti ti-arrow-right"></i></button>
-    </div>`;
-  c.appendChild(s);
-  document.getElementById('btn2back').onclick = () => { setStep(1); render(); };
-  document.getElementById('btn2').onclick = () => {
-    const refNombre = document.getElementById('refNombre').value.trim();
-    const refParentesco = document.getElementById('refParentesco').value.trim();
-    const refTelefono = document.getElementById('refTelefono').value.trim();
-    const err = document.getElementById('err2');
-    if (!refNombre||!refParentesco||!refTelefono) { err.textContent = 'Completa los campos obligatorios.'; err.style.display='block'; return; }
-    Object.assign(formData, { refNombre, refParentesco, refTelefono, refDireccion: document.getElementById('refDireccion').value.trim() });
+// ── Step 2: Referencia ──
+function s2(c) {
+  const sec = document.createElement('div');
+  sec.className = 'section';
+  appendLbl(sec, 'Referencia personal');
+  appendInfo(sec, 'Proporciona una persona de confianza que te conozca bien.');
+  appendField(sec, 'refNombre', 'Nombre completo *', 'text', 'Nombre y apellidos', fd.refNombre||'');
+  appendField(sec, 'refParentesco', 'Parentesco *', 'text', 'Ej: Madre, Hermano, Amigo', fd.refParentesco||'');
+  appendField(sec, 'refTelefono', 'Teléfono *', 'tel', '10 dígitos', fd.refTelefono||'', {maxlength:'10'});
+
+  appendLbl(sec, 'Domicilio de la referencia');
+  const g1 = appendGrid(sec);
+  appendField(g1, 'refCalle', 'Calle *', 'text', 'Nombre de calle', fd.refCalle||'');
+  appendField(g1, 'refNumExt', 'Núm. exterior *', 'text', 'Ej: 5', fd.refNumExt||'');
+  const g2 = appendGrid(sec);
+  appendField(g2, 'refNumInt', 'Núm. interior', 'text', 'Opcional', fd.refNumInt||'');
+  appendField(g2, 'refCp', 'Código postal *', 'text', 'Ej: 66050', fd.refCp||'', {maxlength:'5'});
+  appendField(sec, 'refColonia', 'Colonia *', 'text', 'Nombre de colonia', fd.refColonia||'');
+  appendField(sec, 'refCiudad', 'Ciudad / Municipio *', 'text', 'Ej: García, N.L.', fd.refCiudad||'');
+
+  const err = appendErr(sec, 'err2');
+  const btnRow = document.createElement('div');
+  btnRow.className = 'btn-row';
+  appendBtn(btnRow, '← Atrás', 'btn-secondary', () => {setStep(1);render();});
+  const btnNext = appendBtn(btnRow, 'Siguiente →', 'btn-primary', null);
+  sec.appendChild(btnRow);
+  c.appendChild(sec);
+
+  btnNext.onclick = () => {
+    const refNombre = val('refNombre');
+    const refParentesco = val('refParentesco');
+    const refTelefono = val('refTelefono');
+    const refCalle = val('refCalle');
+    const refNumExt = val('refNumExt');
+    const refCp = val('refCp');
+    const refColonia = val('refColonia');
+    const refCiudad = val('refCiudad');
+    if(!refNombre||!refParentesco||!refTelefono||!refCalle||!refNumExt||!refCp||!refColonia||!refCiudad){
+      showErr('err2','Completa todos los campos de la referencia.'); return;
+    }
+    Object.assign(fd,{refNombre,refParentesco,refTelefono,refCalle,refNumExt,refNumInt:val('refNumInt'),refCp,refColonia,refCiudad,
+      refDireccion:[refCalle,'#'+refNumExt,val('refNumInt')?'Int.'+val('refNumInt'):'',refColonia,refCp,refCiudad].filter(Boolean).join(', ')});
     setStep(3); render();
   };
 }
 
-function renderStep3(c) {
-  const s = document.createElement('div');
-  s.className = 'section';
-  c.appendChild(s);
+// ── Step 3: Documentos ──
+function s3(c) {
+  const sec = document.createElement('div');
+  sec.className = 'section';
+  appendLbl(sec, 'Documentos de identidad');
+  appendInfo(sec, 'Adjunta una foto clara de tu INE y un comprobante de domicilio reciente (máx. 3 meses).');
 
-  // Title
-  const lbl = document.createElement('div');
-  lbl.className = 'section-lbl';
-  lbl.textContent = 'Tu solicitud de crédito';
-  s.appendChild(lbl);
+  // INE
+  const ineField = document.createElement('div');
+  ineField.className = 'field';
+  const ineLabel = document.createElement('label');
+  ineLabel.textContent = 'Foto del INE *';
+  ineField.appendChild(ineLabel);
+  const ineZone = createPhotoZone('ti-id', 'Fotografiar o adjuntar INE', 'Ambos lados si es posible', 'ine-file');
+  const inePreview = createPhotoPreview('ine-prev', 'ine-img', 'ine-rm');
+  if(fotoIneUrl){ ineZone.style.display='none'; inePreview.style.display='block'; inePreview.querySelector('img').src=fotoIneUrl; }
+  ineField.appendChild(ineZone);
+  ineField.appendChild(inePreview);
+  sec.appendChild(ineField);
 
-  // Info
-  const info = document.createElement('div');
-  info.className = 'info-box';
-  info.innerHTML = '<i class="ti ti-cash"></i><span>Clientes nuevos: máximo <strong>$2,000</strong>. El interés depende de las quincenas elegidas.</span>';
-  s.appendChild(info);
+  // Domicilio
+  const domField = document.createElement('div');
+  domField.className = 'field';
+  const domLabel = document.createElement('label');
+  domLabel.textContent = 'Comprobante de domicilio *';
+  domField.appendChild(domLabel);
+  const domZone = createPhotoZone('ti-home', 'Adjuntar comprobante de domicilio', 'Luz, agua, gas, estado de cuenta', 'dom-file');
+  domZone.style.background = '#EDE4F3';
+  domZone.style.borderColor = '#6B4E7D';
+  domZone.querySelector('i').style.color = '#6B4E7D';
+  domZone.querySelector('.pz-lbl').style.color = '#3D2B4F';
+  const domPreview = createPhotoPreview('dom-prev', 'dom-img', 'dom-rm');
+  if(fotoDomUrl){ domZone.style.display='none'; domPreview.style.display='block'; domPreview.querySelector('img').src=fotoDomUrl; }
+  domField.appendChild(domZone);
+  domField.appendChild(domPreview);
+  sec.appendChild(domField);
 
-  // Monto
-  const fMonto = document.createElement('div');
-  fMonto.className = 'field';
-  fMonto.innerHTML = '<label>Monto a solicitar *</label>';
-  const inputMonto = document.createElement('input');
-  inputMonto.id = 'monto'; inputMonto.type = 'number';
-  inputMonto.placeholder = '$0.00'; inputMonto.min = '100'; inputMonto.max = '2000'; inputMonto.step = '100';
-  inputMonto.value = formData.monto || '';
-  fMonto.appendChild(inputMonto);
-  s.appendChild(fMonto);
+  const err = appendErr(sec, 'err3');
+  const btnRow = document.createElement('div');
+  btnRow.className = 'btn-row';
+  appendBtn(btnRow, '← Atrás', 'btn-secondary', () => {setStep(2);render();});
+  const btnNext = appendBtn(btnRow, 'Siguiente →', 'btn-primary', null);
+  sec.appendChild(btnRow);
+  c.appendChild(sec);
+
+  // Photo handlers
+  setupPhoto('ine-file', ineZone, inePreview, 'ine-img', v => fotoIneUrl = v);
+  setupPhoto('dom-file', domZone, domPreview, 'dom-img', v => fotoDomUrl = v);
+  document.getElementById('ine-rm').onclick = () => { fotoIneUrl=null; inePreview.style.display='none'; ineZone.style.display='block'; };
+  document.getElementById('dom-rm').onclick = () => { fotoDomUrl=null; domPreview.style.display='none'; domZone.style.display='block'; };
+
+  btnNext.onclick = () => {
+    if(!fotoIneUrl){showErr('err3','Adjunta una foto de tu INE.'); return;}
+    if(!fotoDomUrl){showErr('err3','Adjunta un comprobante de domicilio.'); return;}
+    setStep(4); render();
+  };
+}
+
+// ── Step 4: Solicitud crédito ──
+function s4(c) {
+  const sec = document.createElement('div');
+  sec.className = 'section';
+  appendLbl(sec, 'Tu solicitud de crédito');
+  appendInfo(sec, 'Clientes nuevos: máximo $2,000. El interés depende del número de quincenas.');
+
+  appendField(sec, 'monto', 'Monto a solicitar *', 'number', '$0.00', fd.monto||'', {min:'100',max:'2000',step:'100'});
 
   // Frecuencia
-  const fFrec = document.createElement('div');
-  fFrec.className = 'field';
-  fFrec.innerHTML = '<label>Frecuencia de pago</label>';
+  const frecField = document.createElement('div');
+  frecField.className = 'field';
+  const frecLbl = document.createElement('label');
+  frecLbl.textContent = 'Frecuencia de pago';
+  frecField.appendChild(frecLbl);
   const frecGrid = document.createElement('div');
-  frecGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px';
+  frecGrid.className = 'grid2';
   ['semanal','quincenal'].forEach(f => {
     const btn = document.createElement('button');
-    btn.className = 'semana-btn' + (frecuencia === f ? ' active' : '');
-    btn.dataset.frec = f;
-    btn.textContent = f.charAt(0).toUpperCase() + f.slice(1);
+    btn.className = 'frec-btn' + (frecuencia===f?' active':'');
+    btn.textContent = f.charAt(0).toUpperCase()+f.slice(1);
     btn.onclick = () => {
       frecuencia = f;
-      frecGrid.querySelectorAll('[data-frec]').forEach(b => b.classList.remove('active'));
+      frecGrid.querySelectorAll('.frec-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
-      updateCalc3();
+      updateCalc();
     };
     frecGrid.appendChild(btn);
   });
-  fFrec.appendChild(frecGrid);
-  s.appendChild(fFrec);
+  frecField.appendChild(frecGrid);
+  sec.appendChild(frecField);
 
   // Quincenas
-  const fQuinc = document.createElement('div');
-  fQuinc.className = 'field';
-  fQuinc.innerHTML = '<label>Número de quincenas *</label>';
+  const quincField = document.createElement('div');
+  quincField.className = 'field';
+  const quincLbl = document.createElement('label');
+  quincLbl.textContent = 'Número de quincenas *';
+  quincField.appendChild(quincLbl);
   const quincGrid = document.createElement('div');
-  quincGrid.className = 'semanas-grid';
+  quincGrid.className = 'quinc-grid';
   [1,2,3,4,5,6].forEach(q => {
     const btn = document.createElement('button');
-    btn.className = 'semana-btn' + (quincenas === q ? ' active' : '');
-    btn.dataset.q = q;
-    btn.innerHTML = '<span style="display:block">' + q + '</span><span style="font-size:9px;font-weight:400">' + (q<=2?'30%':q<=4?'40%':'50%') + '</span>';
+    btn.className = 'quinc-btn' + (quincenas===q?' active':'');
+    btn.innerHTML = '<span style="display:block;font-size:14px">'+q+'</span><span style="font-size:9px;font-weight:400">'+(q<=2?'30%':q<=4?'40%':'50%')+'</span>';
     btn.onclick = () => {
       quincenas = q;
-      quincGrid.querySelectorAll('[data-q]').forEach(b => b.classList.remove('active'));
+      quincGrid.querySelectorAll('.quinc-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
-      const interes = getInteresPorQuincenas(quincenas);
-      badge.textContent = quincenas + ' quincena' + (quincenas>1?'s':'') + ' → ' + interes + '% de interés';
+      badge.textContent = q+' quincena'+(q>1?'s':'')+' → '+getInteres(q)+'% de interés';
       badge.style.display = 'block';
-      updateCalc3();
+      updateCalc();
     };
     quincGrid.appendChild(btn);
   });
-  fQuinc.appendChild(quincGrid);
+  quincField.appendChild(quincGrid);
   const badge = document.createElement('div');
   badge.className = 'interes-badge';
-  badge.style.display = quincenas ? 'block' : 'none';
-  if (quincenas) badge.textContent = quincenas + ' quincena' + (quincenas>1?'s':'') + ' → ' + getInteresPorQuincenas(quincenas) + '% de interés';
-  fQuinc.appendChild(badge);
-  s.appendChild(fQuinc);
+  if(quincenas){badge.textContent=quincenas+' quincena'+(quincenas>1?'s':'')+' → '+getInteres(quincenas)+'% de interés';badge.style.display='block';}
+  quincField.appendChild(badge);
+  sec.appendChild(quincField);
 
   // Calc box
   const calcBox = document.createElement('div');
   calcBox.className = 'calc-box';
   calcBox.id = 'calc-box';
-  calcBox.style.display = 'none';
-  calcBox.innerHTML = `
-    <div class="calc-row"><span class="calc-key">Capital</span><span class="calc-val" id="c-capital">—</span></div>
-    <div class="calc-row"><span class="calc-key">Interés total</span><span class="calc-val" id="c-interes">—</span></div>
-    <div class="calc-row"><span class="calc-key">Número de pagos</span><span class="calc-val" id="c-pagos">—</span></div>
-    <div class="calc-row"><span class="calc-key">Total a pagar</span><span class="calc-val" id="c-total" style="font-size:16px;color:var(--navy)">—</span></div>
-    <div class="calc-row"><span class="calc-key" id="c-cuota-lbl">Pago por cuota</span><span class="calc-val" id="c-cuota" style="font-size:16px;color:var(--green-deep)">—</span></div>`;
-  s.appendChild(calcBox);
+  calcBox.innerHTML =
+    '<div class="calc-row"><span class="calc-key">Capital</span><span class="calc-val" id="c-cap">—</span></div>'+
+    '<div class="calc-row"><span class="calc-key">Interés</span><span class="calc-val" id="c-int">—</span></div>'+
+    '<div class="calc-row"><span class="calc-key">Número de pagos</span><span class="calc-val" id="c-pag">—</span></div>'+
+    '<div class="calc-row"><span class="calc-key">Total a pagar</span><span class="calc-val" id="c-tot" style="font-size:16px;color:var(--navy)">—</span></div>'+
+    '<div class="calc-row"><span class="calc-key" id="c-cuota-lbl">Pago por cuota</span><span class="calc-val" id="c-cuo" style="font-size:16px;color:var(--green-deep)">—</span></div>';
+  sec.appendChild(calcBox);
 
   // Tabla
   const tablaWrap = document.createElement('div');
   tablaWrap.id = 'tabla-wrap';
   tablaWrap.style.display = 'none';
-  tablaWrap.innerHTML = `
-    <div style="font-size:11px;font-weight:600;color:var(--ink-mid);margin-bottom:6px">Tabla de pagos</div>
-    <div class="amort-wrap">
-      <table class="amort-table">
-        <thead><tr><th>#</th><th>Fecha</th><th>Monto</th><th>Capital</th><th>Interés</th></tr></thead>
-        <tbody id="tabla-body"></tbody>
-      </table>
-    </div>`;
-  s.appendChild(tablaWrap);
+  tablaWrap.innerHTML = '<div style="font-size:11px;font-weight:600;color:var(--ink-mid);margin-bottom:6px">Tabla de pagos</div>'+
+    '<div class="amort-wrap"><table class="amort-table">'+
+    '<thead><tr><th>#</th><th>Fecha</th><th>Monto</th><th>Capital</th><th>Interés</th></tr></thead>'+
+    '<tbody id="tabla-body"></tbody></table></div>';
+  sec.appendChild(tablaWrap);
 
-  // Error
-  const err = document.createElement('p');
-  err.id = 'err3'; err.className = 'error-msg';
-  s.appendChild(err);
+  const montoInput = document.getElementById('monto');
+  if(montoInput) montoInput.addEventListener('input', updateCalc);
+  if(quincenas) setTimeout(updateCalc, 50);
 
-  // Buttons
-  const btnRow = document.createElement('div');
-  btnRow.className = 'btn-row';
-  const btnBack = document.createElement('button');
-  btnBack.className = 'btn btn-secondary'; btnBack.style.flex = '1';
-  btnBack.innerHTML = '<i class="ti ti-arrow-left"></i> Atrás';
-  btnBack.onclick = () => { setStep(2); render(); };
-  const btnNext = document.createElement('button');
-  btnNext.className = 'btn btn-primary'; btnNext.style.flex = '2';
-  btnNext.innerHTML = 'Siguiente <i class="ti ti-arrow-right"></i>';
-  btnNext.id = 'btn3';
-  btnRow.appendChild(btnBack);
-  btnRow.appendChild(btnNext);
-  s.appendChild(btnRow);
-
-  // Attach monto listener
-  inputMonto.addEventListener('input', updateCalc3);
-  if (quincenas) setTimeout(updateCalc3, 50);
-
-  function updateCalc3() {
-    const monto = parseFloat(inputMonto.value);
-    if (!monto || !quincenas || monto < 100) {
-      calcBox.style.display = 'none'; tablaWrap.style.display = 'none'; return;
-    }
-    const interes = getInteresPorQuincenas(quincenas);
-    const numPagos = getNumPagos(quincenas, frecuencia);
+  function updateCalc() {
+    const montoEl = document.getElementById('monto');
+    const monto = montoEl ? parseFloat(montoEl.value) : 0;
+    if(!monto||!quincenas||monto<100){calcBox.style.display='none';tablaWrap.style.display='none';return;}
+    const interes = getInteres(quincenas);
+    const numPagos = getNumPagos(quincenas,frecuencia);
     const dias = getDias(frecuencia);
-    const total = Math.round(monto * (1 + interes/100) * 100) / 100;
-    const cuota = Math.round((total / numPagos) * 100) / 100;
-    const intTotal = total - monto;
-    const intPorCuota = Math.round((intTotal / numPagos) * 100) / 100;
-    const capPorCuota = Math.round((monto / numPagos) * 100) / 100;
-    const frecLabel = frecuencia === 'semanal' ? 'semanal' : 'quincenal';
-    document.getElementById('c-capital').textContent = fmtCurrency(monto);
-    document.getElementById('c-interes').textContent = fmtCurrency(intTotal) + ' (' + interes + '%)';
-    document.getElementById('c-pagos').textContent = numPagos + ' pagos ' + frecLabel + 'es';
-    document.getElementById('c-total').textContent = fmtCurrency(total);
-    document.getElementById('c-cuota-lbl').textContent = 'Pago ' + frecLabel;
-    document.getElementById('c-cuota').textContent = fmtCurrency(cuota);
+    const total = Math.round(monto*(1+interes/100)*100)/100;
+    const cuota = Math.round((total/numPagos)*100)/100;
+    const intTotal = total-monto;
+    const intC = Math.round((intTotal/numPagos)*100)/100;
+    const capC = Math.round((monto/numPagos)*100)/100;
+    const fl = frecuencia==='semanal'?'semanal':'quincenal';
+    document.getElementById('c-cap').textContent = fmtC(monto);
+    document.getElementById('c-int').textContent = fmtC(intTotal)+' ('+interes+'%)';
+    document.getElementById('c-pag').textContent = numPagos+' pagos '+fl+'es';
+    document.getElementById('c-tot').textContent = fmtC(total);
+    document.getElementById('c-cuota-lbl').textContent = 'Pago '+fl;
+    document.getElementById('c-cuo').textContent = fmtC(cuota);
     calcBox.style.display = 'block';
     const tbody = document.getElementById('tabla-body');
     tbody.innerHTML = '';
     let saldo = total;
     const hoy = today();
-    for (let i = 1; i <= numPagos; i++) {
-      const f = new Date(hoy + 'T00:00:00');
-      f.setDate(f.getDate() + dias * i);
-      saldo = Math.max(0, Math.round((saldo - cuota) * 100) / 100);
-      const tr = document.createElement('tr');
-      tr.innerHTML = '<td>'+i+'</td><td>'+fmtDate(f.toISOString().split("T")[0])+'</td><td>'+fmtCurrency(cuota)+'</td><td>'+fmtCurrency(capPorCuota)+'</td><td>'+fmtCurrency(intPorCuota)+'</td>';
+    for(let i=1;i<=numPagos;i++){
+      const f=new Date(hoy+'T00:00:00');f.setDate(f.getDate()+dias*i);
+      saldo=Math.max(0,Math.round((saldo-cuota)*100)/100);
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td>'+i+'</td><td>'+fmtD(f.toISOString().split('T')[0])+'</td><td>'+fmtC(cuota)+'</td><td>'+fmtC(capC)+'</td><td>'+fmtC(intC)+'</td>';
       tbody.appendChild(tr);
     }
     tablaWrap.style.display = 'block';
   }
 
-  document.getElementById('btn3').onclick = () => {
-    const monto = parseFloat(inputMonto.value);
-    if (!monto || monto < 100) { err.textContent='Ingresa un monto válido (mínimo $100).'; err.style.display='block'; return; }
-    if (monto > 2000) { err.textContent='El monto máximo para nuevos clientes es $2,000.'; err.style.display='block'; return; }
-    if (!quincenas) { err.textContent='Selecciona el número de quincenas.'; err.style.display='block'; return; }
-    formData.monto = monto;
-    formData.quincenas = quincenas;
-    formData.semanas = quincenas;
-    formData.frecuencia = frecuencia;
-    formData.interes = getInteresPorQuincenas(quincenas);
-    formData.plazo = getNumPagos(quincenas, frecuencia);
-    setStep(4); render();
+  const err = appendErr(sec, 'err4');
+  const btnRow = document.createElement('div');
+  btnRow.className = 'btn-row';
+  appendBtn(btnRow,'← Atrás','btn-secondary',()=>{setStep(3);render();});
+  const btnNext = appendBtn(btnRow,'Siguiente →','btn-primary',null);
+  sec.appendChild(btnRow);
+  c.appendChild(sec);
+
+  btnNext.onclick = () => {
+    const montoEl = document.getElementById('monto');
+    const monto = montoEl ? parseFloat(montoEl.value) : 0;
+    if(!monto||monto<100){showErr('err4','Ingresa un monto válido (mínimo $100).');return;}
+    if(monto>2000){showErr('err4','El monto máximo para nuevos clientes es $2,000.');return;}
+    if(!quincenas){showErr('err4','Selecciona el número de quincenas.');return;}
+    fd.monto=monto; fd.quincenas=quincenas; fd.semanas=quincenas;
+    fd.frecuencia=frecuencia; fd.interes=getInteres(quincenas);
+    fd.plazo=getNumPagos(quincenas,frecuencia);
+    setStep(5); render();
   };
 }
 
-function renderStep4(c) {
-  const s = document.createElement('div');
-  s.className = 'section';
-  s.innerHTML = `
-    <div class="section-lbl">Firma digital</div>
-    <div class="info-box"><i class="ti ti-writing"></i><span>Al firmar confirmas que la información proporcionada es verdadera y que aceptas los términos del préstamo solicitado.</span></div>
-    <div class="canvas-wrap" id="canvas-wrap">
-      <div class="canvas-lbl">DIBUJA TU FIRMA CON EL DEDO</div>
-      <canvas id="firma-canvas" height="160"></canvas>
-      <div class="canvas-hint">Usa el dedo o el stylus para firmar</div>
-    </div>
-    <div class="btn-row" style="margin-top:4px">
-      <button class="btn btn-secondary" id="btn-borrar" style="flex:1"><i class="ti ti-eraser"></i> Borrar</button>
-    </div>
-    <p id="err4" class="error-msg"></p>
-    <div class="btn-row">
-      <button class="btn btn-secondary" id="btn4back" style="flex:1"><i class="ti ti-arrow-left"></i> Atrás</button>
-      <button class="btn btn-success" id="btn4" style="flex:2"><i class="ti ti-send"></i> Enviar solicitud</button>
-    </div>`;
-  c.appendChild(s);
+// ── Step 5: Firma ──
+function s5(c) {
+  const sec = document.createElement('div');
+  sec.className = 'section';
+  appendLbl(sec, 'Firma digital');
+  appendInfo(sec, 'Al firmar confirmas que tus datos son verdaderos y aceptas los términos del préstamo.');
 
-  let isDrawing = false;
-  let ctx = null;
+  const canvasWrap = document.createElement('div');
+  canvasWrap.className = 'canvas-wrap';
+  const canvasLbl = document.createElement('div');
+  canvasLbl.className = 'canvas-lbl';
+  canvasLbl.textContent = 'DIBUJA TU FIRMA CON EL DEDO';
+  const canvas = document.createElement('canvas');
+  canvas.id = 'firma-canvas';
+  canvas.height = 160;
+  const canvasHint = document.createElement('div');
+  canvasHint.className = 'canvas-hint';
+  canvasHint.textContent = 'Usa el dedo o stylus para firmar';
+  canvasWrap.appendChild(canvasLbl);
+  canvasWrap.appendChild(canvas);
+  canvasWrap.appendChild(canvasHint);
+  sec.appendChild(canvasWrap);
+
+  const btnBorrar = document.createElement('button');
+  btnBorrar.className = 'btn btn-secondary';
+  btnBorrar.style.marginTop = '6px';
+  btnBorrar.innerHTML = '<i class="ti ti-eraser"></i> Borrar firma';
+  sec.appendChild(btnBorrar);
+
+  const err = appendErr(sec, 'err5');
+  const btnRow = document.createElement('div');
+  btnRow.className = 'btn-row';
+  appendBtn(btnRow,'← Atrás','btn-secondary',()=>{setStep(4);render();});
+  const btnEnviar = appendBtn(btnRow,'Enviar solicitud','btn-success',null);
+  btnEnviar.innerHTML = '<i class="ti ti-send"></i> Enviar solicitud';
+  sec.appendChild(btnRow);
+  c.appendChild(sec);
+
+  // Canvas setup
+  let isDrawing=false, ctx=null;
   hasDrawn = false;
-
-  const canvas = document.getElementById('firma-canvas');
   const initCtx = () => {
     canvas.width = canvas.offsetWidth;
     ctx = canvas.getContext('2d');
-    ctx.strokeStyle = '#1A2340';
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.strokeStyle='#1A2340'; ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineJoin='round';
   };
-  const getPos = (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const sx = canvas.width / rect.width;
-    const sy = canvas.height / rect.height;
-    if (e.touches) return { x:(e.touches[0].clientX-rect.left)*sx, y:(e.touches[0].clientY-rect.top)*sy };
-    return { x:(e.clientX-rect.left)*sx, y:(e.clientY-rect.top)*sy };
+  const getPos = e => {
+    const r=canvas.getBoundingClientRect(),sx=canvas.width/r.width,sy=canvas.height/r.height;
+    if(e.touches) return{x:(e.touches[0].clientX-r.left)*sx,y:(e.touches[0].clientY-r.top)*sy};
+    return{x:(e.clientX-r.left)*sx,y:(e.clientY-r.top)*sy};
   };
-  canvas.addEventListener('mousedown', e => { e.preventDefault(); if(!ctx)initCtx(); isDrawing=true; hasDrawn=true; const p=getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); });
-  canvas.addEventListener('mousemove', e => { e.preventDefault(); if(!isDrawing||!ctx)return; const p=getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); });
-  canvas.addEventListener('mouseup', e => { e.preventDefault(); isDrawing=false; });
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); if(!ctx)initCtx(); isDrawing=true; hasDrawn=true; const p=getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); }, {passive:false});
-  canvas.addEventListener('touchmove', e => { e.preventDefault(); if(!isDrawing||!ctx)return; const p=getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); }, {passive:false});
-  canvas.addEventListener('touchend', e => { e.preventDefault(); isDrawing=false; }, {passive:false});
-  setTimeout(initCtx, 100);
+  canvas.addEventListener('mousedown',e=>{e.preventDefault();if(!ctx)initCtx();isDrawing=true;hasDrawn=true;const p=getPos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);});
+  canvas.addEventListener('mousemove',e=>{e.preventDefault();if(!isDrawing||!ctx)return;const p=getPos(e);ctx.lineTo(p.x,p.y);ctx.stroke();});
+  canvas.addEventListener('mouseup',e=>{e.preventDefault();isDrawing=false;});
+  canvas.addEventListener('touchstart',e=>{e.preventDefault();if(!ctx)initCtx();isDrawing=true;hasDrawn=true;const p=getPos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);},{passive:false});
+  canvas.addEventListener('touchmove',e=>{e.preventDefault();if(!isDrawing||!ctx)return;const p=getPos(e);ctx.lineTo(p.x,p.y);ctx.stroke();},{passive:false});
+  canvas.addEventListener('touchend',e=>{e.preventDefault();isDrawing=false;},{passive:false});
+  setTimeout(initCtx,100);
 
-  document.getElementById('btn-borrar').onclick = () => { if(!ctx)initCtx(); ctx.clearRect(0,0,canvas.width,canvas.height); hasDrawn=false; };
-  document.getElementById('btn4back').onclick = () => { setStep(3); render(); };
-  document.getElementById('btn4').addEventListener('click', async () => {
-    const err = document.getElementById('err4');
-    if (!hasDrawn) { err.textContent='Por favor firma antes de enviar.'; err.style.display='block'; return; }
-    const btn = document.getElementById('btn4');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="ti ti-loader"></i> Enviando...';
+  btnBorrar.onclick = () => {if(!ctx)initCtx();ctx.clearRect(0,0,canvas.width,canvas.height);hasDrawn=false;};
+
+  btnEnviar.addEventListener('click', async () => {
+    if(!hasDrawn){showErr('err5','Por favor firma antes de enviar.');return;}
+    btnEnviar.disabled=true;
+    btnEnviar.innerHTML='<i class="ti ti-loader"></i> Enviando...';
     try {
       firmaUrl = canvas.toDataURL('image/png');
       await db.collection('solicitudes').add({
-        ...formData,
+        ...fd,
         firmaClienteUrl: firmaUrl,
+        fotoIneUrl: fotoIneUrl,
+        fotoDomicilioUrl: fotoDomUrl,
         estado: 'pendiente',
         createdAt: new Date().toISOString(),
       });
-      setStep(5); render();
+      document.getElementById('steps-bar').style.display='none';
+      step=99; render();
     } catch(e) {
       console.error(e);
-      err.textContent = 'Error al enviar. Intenta de nuevo.';
-      err.style.display = 'block';
-      btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-send"></i> Enviar solicitud';
+      showErr('err5','Error al enviar. Intenta de nuevo.');
+      btnEnviar.disabled=false;
+      btnEnviar.innerHTML='<i class="ti ti-send"></i> Enviar solicitud';
     }
   });
 }
 
 function renderSuccess(c) {
-  document.querySelector('.steps').style.display = 'none';
-  c.innerHTML = `
-    <div class="success-screen">
-      <img src="https://enriquerocham.github.io/varito/LOGO_CUADRADO.png" style="width:100px;height:auto" onerror="this.style.display='none'"/>
-      <h2>¡Solicitud enviada! 🎉</h2>
-      <p>Tu solicitud fue recibida correctamente.<br/><br/>
-      En breve recibirás un mensaje de WhatsApp confirmando si tu préstamo fue autorizado.<br/><br/>
-      Gracias por confiar en <strong>Varito</strong>.</p>
-    </div>`;
+  const s = document.createElement('div');
+  s.className = 'success-screen';
+  s.innerHTML =
+    '<img src="https://enriquerocham.github.io/varito/LOGO_CUADRADO.png" style="width:90px;height:90px;object-fit:contain;border-radius:16px" onerror="this.style.display=\'none\'"/>'+
+    '<h2>¡Solicitud enviada! 🎉</h2>'+
+    '<p>Tu solicitud fue recibida correctamente.<br/><br/>En breve recibirás un mensaje de <strong>WhatsApp</strong> confirmando si tu préstamo fue autorizado.<br/><br/>Gracias por confiar en <strong>Varito</strong>. 🪙</p>';
+  c.appendChild(s);
+}
+
+// ── DOM helpers ──
+function val(id){const el=document.getElementById(id);return el?el.value.trim():'';}
+function appendLbl(parent,text){const d=document.createElement('div');d.className='section-lbl';d.textContent=text;parent.appendChild(d);return d;}
+function appendInfo(parent,text){const d=document.createElement('div');d.className='info-box';d.innerHTML='<i class="ti ti-info-circle"></i><span>'+text+'</span>';parent.appendChild(d);return d;}
+function appendGrid(parent){const g=document.createElement('div');g.className='grid2';parent.appendChild(g);return g;}
+function appendErr(parent,id){const p=document.createElement('p');p.id=id;p.className='error-msg';parent.appendChild(p);return p;}
+function showErr(id,msg){const el=document.getElementById(id);if(el){el.textContent=msg;el.style.display='block';el.scrollIntoView({behavior:'smooth',block:'center'});}}
+function appendField(parent,id,label,type,placeholder,value,attrs){
+  const f=document.createElement('div');f.className='field';
+  const l=document.createElement('label');l.textContent=label;f.appendChild(l);
+  const inp=document.createElement('input');inp.id=id;inp.type=type;inp.placeholder=placeholder;inp.value=value||'';
+  if(attrs) Object.entries(attrs).forEach(([k,v])=>inp.setAttribute(k,v));
+  f.appendChild(inp);parent.appendChild(f);return inp;
+}
+function appendBtn(parent,text,cls,onclick){
+  const b=document.createElement('button');b.className='btn '+cls;b.style.flex='1';b.innerHTML=text;
+  if(onclick) b.onclick=onclick;parent.appendChild(b);return b;
+}
+function createPhotoZone(icon,label,sub,fileId){
+  const z=document.createElement('div');z.className='photo-zone';
+  z.innerHTML='<i class="ti '+icon+'"></i><div class="pz-lbl">'+label+'</div><div class="pz-sub">'+sub+'</div><input type="file" id="'+fileId+'" accept="image/*" style="display:none"/>';
+  z.onclick=()=>document.getElementById(fileId).click();
+  return z;
+}
+function createPhotoPreview(prevId,imgId,rmId){
+  const p=document.createElement('div');p.className='photo-preview';p.id=prevId;
+  p.innerHTML='<img id="'+imgId+'" src="" alt=""/><button class="photo-rm" id="'+rmId+'"><i class="ti ti-x"></i></button>';
+  return p;
+}
+function setupPhoto(fileId,zone,preview,imgId,setter){
+  const fileInput=document.getElementById(fileId);
+  if(!fileInput) return;
+  fileInput.addEventListener('change',e=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{setter(ev.target.result);document.getElementById(imgId).src=ev.target.result;preview.style.display='block';zone.style.display='none';};
+    reader.readAsDataURL(file);
+  });
 }
 
 render();

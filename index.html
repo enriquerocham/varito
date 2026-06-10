@@ -1552,6 +1552,8 @@ const Modal = {
     const prestamo = Store.getPrestamo(prestamoId);
     if (!prestamo) return App.navigate('clientes');
     const cliente = Store.getCliente(prestamo.clienteId);
+    if (!cliente) return App.navigate('clientes');
+
     const saldo = Store.getSaldoRestante(prestamoId);
     const pagosHechos = Store.getPagosCount(prestamoId);
     const numCuota = pagosHechos + 1;
@@ -1565,85 +1567,126 @@ const Modal = {
     let notifWhatsApp = true;
 
     const el = document.createElement('div');
-    el.innerHTML = `
-      <div class="page-header" style="padding:14px 20px 16px">
-        <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
-        <div style="padding-left:36px">
-          <h1>Registrar pago</h1>
-          <p>${cliente.nombre} · Cuota ${numCuota} de ${prestamo.plazo}</p>
-        </div>
-      </div>
-      <div class="scroll-area" style="padding-bottom:16px">
-        <div style="margin:12px 16px;background:var(--success-light);border-radius:var(--r-lg);padding:14px;display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-size:11px;color:#2D7A54;font-weight:600;letter-spacing:0.5px">MONTO DE LA CUOTA</div>
-            <div style="font-size:28px;font-weight:700;color:var(--success)">${Fmt.currency(prestamo.pagoCuota)}</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:11px;color:#2D7A54">Saldo restante</div>
-            <div style="font-size:15px;font-weight:700;color:var(--success)">${Fmt.currency(saldo)}</div>
-          </div>
-        </div>
 
-        ${ penalizacionTotal > 0 ? '<div style="margin:0 16px 4px"><div class="alert-pill"><i class="ti ti-alert-triangle" style="font-size:16px"></i><span>Penalización acumulada por mora: <strong>' + Fmt.currency(penalizacionTotal) + '</strong> (' + vencidas.length + ' cuota' + (vencidas.length>1?'s':'') + ' vencida' + (vencidas.length>1?'s':'') + ')</span></div></div>' : ''}
-
-
-
-
-
-
-
-        <div class="form-body">
-          <div class="field">
-            <label>Fecha de pago</label>
-            <input type="date" id="fecha" value="${Fmt.today()}"/>
-          </div>
-          <div class="field">
-            <label>Método de pago</label>
-            <div class="method-row" id="method-row">
-              <div class="method-chip active" data-met="transferencia"><i class="ti ti-building-bank" style="font-size:13px"></i> Transferencia</div>
-              <div class="method-chip" data-met="efectivo"><i class="ti ti-cash" style="font-size:13px"></i> Efectivo</div>
-              <div class="method-chip" data-met="codi"><i class="ti ti-device-mobile" style="font-size:13px"></i> CoDi</div>
-            </div>
-          </div>
-          <div class="field" id="folio-field">
-            <label>Folio / referencia de transferencia</label>
-            <input type="text" id="folio" placeholder="Número de operación"/>
-          </div>
-          <div class="field">
-            <label>Comprobante de pago <span style="font-size:10px;color:var(--ink-soft);font-weight:400;text-transform:none">— se adjuntará al recibo y al WhatsApp</span></label>
-            <div class="photo-zone" id="photo-zone" onclick="document.getElementById('comp-file').click()">
-              <i class="ti ti-camera"></i>
-              <div class="pz-label">Fotografiar o adjuntar comprobante</div>
-              <div class="pz-sub">La imagen se enviará junto con la notificación de WhatsApp</div>
-              <input type="file" id="comp-file" accept="image/*"/>
-            </div>
-            <div id="comp-preview" style="display:none" class="photo-preview-box">
-              <img id="comp-img" src="" alt="Comprobante"/>
-              <button class="photo-remove" id="remove-comp"><i class="ti ti-x"></i></button>
-            </div>
-          </div>
-          <div class="field">
-            <label>Nota (opcional)</label>
-            <textarea id="nota" placeholder="Ej: Pago en mano, abono parcial, etc."></textarea>
-          </div>
-        </div>
-
-        <div class="toggle-wrap">
-          <span class="toggle-label"><i class="ti ti-brand-whatsapp" style="font-size:16px;vertical-align:-3px;color:#25D366"></i> Notificar al cliente por WhatsApp</span>
-          <button class="toggle on" id="notif-toggle"><div class="toggle-thumb"></div></button>
-        </div>
-
-        <div style="padding:16px;display:flex;flex-direction:column;gap:8px">
-          <button class="btn btn-success" id="save-btn"><i class="ti ti-check"></i> Confirmar y guardar pago</button>
-          <button class="btn btn-secondary" id="cancel-btn">Cancelar</button>
-        </div>
-      </div>
-    `;
-
+    // ── Header ──
+    const header = document.createElement('div');
+    header.className = 'page-header';
+    header.style.padding = '14px 20px 16px';
+    header.innerHTML = `
+      <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
+      <div style="padding-left:36px">
+        <h1>Registrar pago</h1>
+        <p>${cliente.nombre} · Cuota ${numCuota} de ${prestamo.plazo}</p>
+      </div>`;
+    el.appendChild(header);
     el.querySelector('#back-btn').onclick = () => App.navigate('clienteDetalle', prestamo.clienteId);
+
+    // ── Scroll body ──
+    const body = document.createElement('div');
+    body.style.cssText = 'padding-bottom:80px;';
+
+    // Monto card
+    const montoCard = document.createElement('div');
+    montoCard.style.cssText = 'margin:12px 16px;background:var(--success-light);border-radius:var(--r-lg);padding:14px;display:flex;justify-content:space-between;align-items:center';
+    montoCard.innerHTML = `
+      <div>
+        <div style="font-size:11px;color:var(--success);font-weight:600;letter-spacing:0.5px">MONTO DE LA CUOTA</div>
+        <div style="font-size:28px;font-weight:700;color:var(--success)">${Fmt.currency(prestamo.pagoCuota)}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:var(--success)">Saldo restante</div>
+        <div style="font-size:15px;font-weight:700;color:var(--success)">${Fmt.currency(saldo)}</div>
+      </div>`;
+    body.appendChild(montoCard);
+
+    // Penalización si hay
+    if (penalizacionTotal > 0) {
+      const penal = document.createElement('div');
+      penal.style.cssText = 'margin:0 16px 8px';
+      penal.innerHTML = `
+        <div class="alert-pill">
+          <i class="ti ti-alert-triangle" style="font-size:16px"></i>
+          <span>Penalización acumulada: <strong>${Fmt.currency(penalizacionTotal)}</strong> (${vencidas.length} cuota${vencidas.length>1?'s':''} vencida${vencidas.length>1?'s':''})</span>
+        </div>`;
+      body.appendChild(penal);
+    }
+
+    // ── Formulario ──
+    const form = document.createElement('div');
+    form.className = 'form-body';
+
+    // Fecha
+    const fieldFecha = document.createElement('div');
+    fieldFecha.className = 'field';
+    fieldFecha.innerHTML = `<label>Fecha de pago</label><input type="date" id="fecha" value="${Fmt.today()}"/>`;
+    form.appendChild(fieldFecha);
+
+    // Método
+    const fieldMetodo = document.createElement('div');
+    fieldMetodo.className = 'field';
+    fieldMetodo.innerHTML = `
+      <label>Método de pago</label>
+      <div class="method-row" id="method-row">
+        <div class="method-chip active" data-met="transferencia"><i class="ti ti-building-bank" style="font-size:13px"></i> Transferencia</div>
+        <div class="method-chip" data-met="efectivo"><i class="ti ti-cash" style="font-size:13px"></i> Efectivo</div>
+        <div class="method-chip" data-met="codi"><i class="ti ti-device-mobile" style="font-size:13px"></i> CoDi</div>
+      </div>`;
+    form.appendChild(fieldMetodo);
+
+    // Folio
+    const fieldFolio = document.createElement('div');
+    fieldFolio.className = 'field';
+    fieldFolio.id = 'folio-field';
+    fieldFolio.innerHTML = `<label>Folio / referencia</label><input type="text" id="folio" placeholder="Número de operación"/>`;
+    form.appendChild(fieldFolio);
+
+    // Comprobante
+    const fieldComp = document.createElement('div');
+    fieldComp.className = 'field';
+    fieldComp.innerHTML = `
+      <label>Comprobante <span style="font-size:10px;color:var(--ink-soft);font-weight:400;text-transform:none">— se adjunta al recibo y WhatsApp</span></label>
+      <div class="photo-zone" id="photo-zone">
+        <i class="ti ti-camera"></i>
+        <div class="pz-label">Fotografiar o adjuntar comprobante</div>
+        <div class="pz-sub">Recomendado para tu respaldo</div>
+        <input type="file" id="comp-file" accept="image/*"/>
+      </div>
+      <div id="comp-preview" style="display:none" class="photo-preview-box">
+        <img id="comp-img" src="" alt="Comprobante"/>
+        <button class="photo-remove" id="remove-comp"><i class="ti ti-x"></i></button>
+      </div>`;
+    form.appendChild(fieldComp);
+
+    // Nota
+    const fieldNota = document.createElement('div');
+    fieldNota.className = 'field';
+    fieldNota.innerHTML = `<label>Nota (opcional)</label><textarea id="nota" placeholder="Ej: pago en mano, abono parcial..."></textarea>`;
+    form.appendChild(fieldNota);
+
+    body.appendChild(form);
+
+    // WhatsApp toggle
+    const toggle = document.createElement('div');
+    toggle.className = 'toggle-wrap';
+    toggle.innerHTML = `
+      <span class="toggle-label"><i class="ti ti-brand-whatsapp" style="font-size:16px;vertical-align:-3px;color:#25D366"></i> Notificar al cliente por WhatsApp</span>
+      <button class="toggle on" id="notif-toggle"><div class="toggle-thumb"></div></button>`;
+    body.appendChild(toggle);
+
+    // Botones
+    const btns = document.createElement('div');
+    btns.style.cssText = 'padding:16px;display:flex;flex-direction:column;gap:8px';
+    btns.innerHTML = `
+      <button class="btn btn-success" id="save-btn"><i class="ti ti-check"></i> Confirmar y guardar pago</button>
+      <button class="btn btn-secondary" id="cancel-btn">Cancelar</button>`;
+    body.appendChild(btns);
+
+    el.appendChild(body);
+
+    // ── Event listeners ──
     el.querySelector('#cancel-btn').onclick = () => App.navigate('clienteDetalle', prestamo.clienteId);
 
+    // Método chips
     el.querySelectorAll('.method-chip[data-met]').forEach(chip => {
       chip.addEventListener('click', () => {
         metodo = chip.dataset.met;
@@ -1653,73 +1696,89 @@ const Modal = {
       });
     });
 
-    const compFile = el.querySelector('#comp-file');
-    const compPreview = el.querySelector('#comp-preview');
-    const compImg = el.querySelector('#comp-img');
+    // Foto comprobante
     const photoZone = el.querySelector('#photo-zone');
+    const compFile  = el.querySelector('#comp-file');
+    const compPrev  = el.querySelector('#comp-preview');
+    const compImg   = el.querySelector('#comp-img');
 
-    compFile.addEventListener('change', (e) => {
-      const file = e.target.files[0]; if (!file) return;
+    photoZone.onclick = () => compFile.click();
+    compFile.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = ev => {
         comprobanteDataUrl = ev.target.result;
         compImg.src = comprobanteDataUrl;
-        compPreview.style.display = 'block';
+        compPrev.style.display = 'block';
         photoZone.style.display = 'none';
       };
       reader.readAsDataURL(file);
     });
-
-    el.querySelector('#remove-comp').addEventListener('click', () => {
+    el.querySelector('#remove-comp').onclick = () => {
       comprobanteDataUrl = null;
-      compPreview.style.display = 'none';
+      compPrev.style.display = 'none';
       photoZone.style.display = 'block';
-    });
+    };
 
+    // Toggle WhatsApp
     const notifBtn = el.querySelector('#notif-toggle');
-    notifBtn.addEventListener('click', () => {
+    notifBtn.onclick = () => {
       notifWhatsApp = !notifWhatsApp;
       notifBtn.classList.toggle('on', notifWhatsApp);
-    });
+    };
 
+    // Guardar pago
     el.querySelector('#save-btn').addEventListener('click', async () => {
       const fecha = el.querySelector('#fecha').value;
-      const folio = el.querySelector('#folio').value.trim();
-      const nota = el.querySelector('#nota').value.trim();
       if (!fecha) { Toast.error('Selecciona la fecha del pago'); return; }
+      const folio = el.querySelector('#folio').value.trim();
+      const nota  = el.querySelector('#nota').value.trim();
 
-      const pago = await Store.addPago({ prestamoId, monto: prestamo.pagoCuota, fecha, metodo, folio, nota, comprobanteUrl: comprobanteDataUrl, numCuota });
-      const nuevoSaldo = Store.getSaldoRestante(prestamoId);
+      const saveBtn = el.querySelector('#save-btn');
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="ti ti-loader"></i> Guardando...';
 
-      Toast.success('Pago registrado correctamente');
+      try {
+        await Store.addPago({
+          prestamoId,
+          monto: prestamo.pagoCuota,
+          fecha, metodo, folio, nota,
+          comprobanteUrl: comprobanteDataUrl,
+          numCuota,
+        });
 
-      if (notifWhatsApp && cliente.telefono) {
-        const nombre = cliente.nombre.split(' ')[0];
-        const metodoLabel = { transferencia: 'transferencia bancaria', efectivo: 'efectivo', codi: 'CoDi' }[metodo] || metodo;
-        const folioTexto = folio ? `\nReferencia: ${folio}` : '';
-        const saldoTexto = nuevoSaldo > 0
-          ? `Tu saldo restante es de *${Fmt.currency(nuevoSaldo)}* (${Store.getPagosCount(prestamoId)} de ${prestamo.plazo} pagos completados).`
-          : `✅ *¡Felicidades! Tu préstamo ha sido liquidado en su totalidad.* Muchas gracias por tu puntualidad.`;
+        const nuevoSaldo = Store.getSaldoRestante(prestamoId);
+        Toast.success('Pago registrado correctamente');
 
-        const msg = `Hola *${nombre}* 👋\n\nTe confirmamos tu pago recibido 🪙\n\n✅ *Monto:* ${Fmt.currency(prestamo.pagoCuota)}\n📅 *Fecha:* ${Fmt.date(fecha)}\n💳 *Método:* ${metodoLabel.charAt(0).toUpperCase() + metodoLabel.slice(1)}${folioTexto}\n\n${saldoTexto}\n\n${comprobanteDataUrl ? '🧾 Adjuntamos comprobante de pago.\n\n' : ''}Cualquier duda, con gusto te atendemos 😊\n\n*Varito* · Tu dinerito, siempre a la mano`;
+        if (notifWhatsApp && cliente.telefono) {
+          const nombre = cliente.nombre.split(' ')[0];
+          const metodoLabel = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', codi: 'CoDi' }[metodo] || metodo;
+          const folioTexto = folio ? '\nReferencia: ' + folio : '';
+          const pagosAhora = Store.getPagosCount(prestamoId);
+          const saldoTexto = nuevoSaldo > 0
+            ? 'Tu saldo restante es de *' + Fmt.currency(nuevoSaldo) + '* (' + pagosAhora + ' de ' + prestamo.plazo + ' pagos completados).'
+            : '✅ *¡Felicidades! Tu préstamo ha sido liquidado en su totalidad.* Muchas gracias por tu puntualidad.';
 
-Por medio del presente mensaje le confirmamos la recepción de su pago:
+          const msg = 'Hola *' + nombre + '* 👋\n\nTe confirmamos tu pago recibido 🪙\n\n'
+            + '✅ *Monto:* ' + Fmt.currency(prestamo.pagoCuota) + '\n'
+            + '📅 *Fecha:* ' + Fmt.date(fecha) + '\n'
+            + '💳 *Método:* ' + metodoLabel + folioTexto + '\n\n'
+            + saldoTexto + '\n\n'
+            + (comprobanteDataUrl ? '🧾 Adjuntamos tu comprobante de pago.\n\n' : '')
+            + 'Cualquier duda, con gusto te atendemos 😊\n\n'
+            + '*Varito* · Tu dinerito, siempre a la mano';
 
-💰 *Monto recibido:* ${Fmt.currency(prestamo.pagoCuota)}
-📅 *Fecha:* ${Fmt.date(fecha)}
-💳 *Método:* ${metodoLabel.charAt(0).toUpperCase() + metodoLabel.slice(1)}${folioTexto}
+          setTimeout(() => window.open('https://wa.me/52' + cliente.telefono + '?text=' + encodeURIComponent(msg), '_blank'), 400);
+        }
 
-${saldoTexto}
-
-${comprobanteDataUrl ? '📎 Se adjunta imagen del comprobante de pago.\n\n' : ''}Ante cualquier duda, no dude en contactarnos.
-
-_Varito — Servicios de crédito personal · Varito_`;
-
-        const encoded = encodeURIComponent(msg);
-        setTimeout(() => window.open(`https://wa.me/52${cliente.telefono}?text=${encoded}`, '_blank'), 600);
+        App.navigate('clienteDetalle', prestamo.clienteId);
+      } catch(err) {
+        console.error(err);
+        Toast.error('Error al guardar. Intenta de nuevo.');
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="ti ti-check"></i> Confirmar y guardar pago';
       }
-
-      App.navigate('clienteDetalle', prestamo.clienteId);
     });
 
     return el;

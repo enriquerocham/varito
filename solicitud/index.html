@@ -123,6 +123,7 @@ let fd = {}; // form data
 let quincenas = 0;
 let frecuencia = 'semanal';
 let firmaUrl = null;
+let metodoPago = 'transferencia';
 let fotoIneUrl = null;
 let fotoIneBackUrl = null;
 let fotoDomUrl = null;
@@ -455,6 +456,63 @@ function s4(c) {
     tablaWrap.style.display = 'block';
   }
 
+  // ── Cómo recibir el dinero ──
+  appendLbl(sec, '¿Cómo quieres recibir tu dinero?');
+  const metodoField = document.createElement('div');
+  metodoField.className = 'field';
+  const metodoGrid = document.createElement('div');
+  metodoGrid.className = 'grid2';
+  const btnTransfer = document.createElement('button');
+  btnTransfer.className = 'frec-btn' + (metodoPago==='transferencia'?' active':'');
+  btnTransfer.innerHTML = '<i class="ti ti-building-bank"></i> Transferencia';
+  const btnEfectivo = document.createElement('button');
+  btnEfectivo.className = 'frec-btn' + (metodoPago==='efectivo'?' active':'');
+  btnEfectivo.innerHTML = '<i class="ti ti-cash"></i> Efectivo';
+  metodoGrid.appendChild(btnTransfer);
+  metodoGrid.appendChild(btnEfectivo);
+  metodoField.appendChild(metodoGrid);
+  sec.appendChild(metodoField);
+
+  // Bank fields (shown only for transferencia)
+  const bankWrap = document.createElement('div');
+  bankWrap.style.cssText = 'display:' + (metodoPago==='transferencia'?'flex':'none') + ';flex-direction:column;gap:12px';
+  const bancoField = document.createElement('div');
+  bancoField.className = 'field';
+  bancoField.innerHTML = '<label>Banco *</label>';
+  const bancoSel = document.createElement('select');
+  bancoSel.id = 'banco';
+  ['','BBVA','Banorte','Santander','Citibanamex','HSBC','Scotiabank','Banco Azteca','BanCoppel','Spin by OXXO','Nu','Otro'].forEach(b => {
+    const opt = document.createElement('option');
+    opt.value = b; opt.textContent = b || '— Selecciona tu banco —';
+    if(fd.banco===b) opt.selected = true;
+    bancoSel.appendChild(opt);
+  });
+  bancoField.appendChild(bancoSel);
+  bankWrap.appendChild(bancoField);
+  appendField(bankWrap, 'clabe', 'CLABE interbancaria (18 dígitos) *', 'text', '18 dígitos de tu CLABE', fd.clabe||'', {maxlength:'18', inputmode:'numeric'});
+  const clabeHint = document.createElement('div');
+  clabeHint.style.cssText = 'font-size:10px;color:var(--ink-soft);margin-top:-8px';
+  clabeHint.textContent = 'La encuentras en tu app bancaria. Verifica que sea correcta.';
+  bankWrap.appendChild(clabeHint);
+  sec.appendChild(bankWrap);
+
+  const efectivoNote = document.createElement('div');
+  efectivoNote.className = 'info-box';
+  efectivoNote.style.display = metodoPago==='efectivo'?'flex':'none';
+  efectivoNote.innerHTML = '<i class="ti ti-info-circle"></i><span>Te contactaremos por WhatsApp para coordinar la entrega en efectivo.</span>';
+  sec.appendChild(efectivoNote);
+
+  btnTransfer.onclick = () => {
+    metodoPago = 'transferencia';
+    btnTransfer.classList.add('active'); btnEfectivo.classList.remove('active');
+    bankWrap.style.display = 'flex'; efectivoNote.style.display = 'none';
+  };
+  btnEfectivo.onclick = () => {
+    metodoPago = 'efectivo';
+    btnEfectivo.classList.add('active'); btnTransfer.classList.remove('active');
+    bankWrap.style.display = 'none'; efectivoNote.style.display = 'flex';
+  };
+
   const err = appendErr(sec, 'err4');
   const btnRow = document.createElement('div');
   btnRow.className = 'btn-row';
@@ -469,6 +527,16 @@ function s4(c) {
     if(!monto||monto<100){showErr('err4','Ingresa un monto válido (mínimo $100).');return;}
     if(monto>2000){showErr('err4','El monto máximo para nuevos clientes es $2,000.');return;}
     if(!quincenas){showErr('err4','Selecciona el número de quincenas.');return;}
+    if(metodoPago==='transferencia'){
+      const banco = val('banco');
+      const clabe = val('clabe');
+      if(!banco){showErr('err4','Selecciona tu banco.');return;}
+      if(!/^\d{18}$/.test(clabe)){showErr('err4','La CLABE debe tener exactamente 18 dígitos.');return;}
+      fd.banco = banco; fd.clabe = clabe;
+    } else {
+      fd.banco = ''; fd.clabe = '';
+    }
+    fd.metodoEntrega = metodoPago;
     fd.monto=monto; fd.quincenas=quincenas; fd.semanas=quincenas;
     fd.frecuencia=frecuencia; fd.interes=getInteres(quincenas);
     fd.plazo=getNumPagos(quincenas,frecuencia);

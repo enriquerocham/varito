@@ -1791,6 +1791,22 @@ const Modal = {
       <input type="number" id="monto" placeholder="$0.00" min="100" step="100"/>`;
     body.appendChild(fMonto);
 
+    // Excepción administrativa al límite de crédito
+    const excepcionWrap = document.createElement('div');
+    excepcionWrap.id = 'excepcion-wrap';
+    excepcionWrap.style.cssText = 'display:none;background:var(--warn-light);border:1px solid #F4D58D;border-radius:var(--r-md);padding:12px 14px';
+    excepcionWrap.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="min-width:0">
+          <div style="font-size:12px;font-weight:600;color:#8B5E1A">Autorizar excepción al límite</div>
+          <div style="font-size:10px;color:#9A6B24;margin-top:2px;line-height:1.4">Permite aprobar este préstamo por encima de la línea normal del cliente.</div>
+        </div>
+        <button type="button" class="toggle" id="excepcion-toggle" aria-pressed="false" aria-label="Autorizar excepción al límite">
+          <span class="toggle-thumb"></span>
+        </button>
+      </div>`;
+    body.appendChild(excepcionWrap);
+
     // Frecuencia
     const fFrec = document.createElement('div');
     fFrec.className = 'field';
@@ -1802,23 +1818,14 @@ const Modal = {
       </div>`;
     body.appendChild(fFrec);
 
-    // Quincenas
-    const fQuinc = document.createElement('div');
-    fQuinc.className = 'field';
-    fQuinc.innerHTML = `
-      <label>Número de quincenas *</label>
-      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px" id="quinc-grid">
-        ${[1,2,3,4,5,6].map(q => `
-          <button type="button" class="quinc-btn" data-q="${q}" style="
-            padding:10px 4px;border-radius:var(--r-md);border:1.5px solid var(--sand-mid);
-            background:var(--sand);font-size:13px;font-weight:600;color:var(--ink-mid);cursor:pointer;
-            display:flex;flex-direction:column;align-items:center;gap:2px">
-            <span>${q}</span>
-            <span style="font-size:9px;font-weight:400">${q<=2?'30%':q<=4?'40%':'50%'}</span>
-          </button>`).join('')}
-      </div>
-      <div id="quinc-badge" style="display:none;margin-top:6px;padding:8px 12px;background:var(--green-light);border-radius:var(--r-md);font-size:12px;color:var(--green-deep);font-weight:500"></div>`;
-    body.appendChild(fQuinc);
+    // Plazo dinámico: semanas o quincenas
+    const fPlazo = document.createElement('div');
+    fPlazo.className = 'field';
+    fPlazo.innerHTML = `
+      <label id="plazo-label">Número de semanas *</label>
+      <div id="plazo-grid"></div>
+      <div id="plazo-badge" style="display:none;margin-top:6px;padding:8px 12px;background:var(--green-light);border-radius:var(--r-md);font-size:12px;color:var(--green-deep);font-weight:500"></div>`;
+    body.appendChild(fPlazo);
 
     // Fecha inicio
     const fFecha = document.createElement('div');
@@ -1867,19 +1874,91 @@ const Modal = {
     el.appendChild(body);
 
     // ── State ──
-    let quincenasSeleccionadas = 0;
+    let plazoSeleccionado = 0;
     let frecuencia = 'semanal';
+    let excepcionAutorizada = false;
+
+    const getInteresPorPlazo = (plazo, frec) => {
+      if (frec === 'semanal') {
+        if (plazo <= 4) return 30;
+        if (plazo <= 8) return 40;
+        return 50;
+      }
+      return getInteresPorQuincenas(plazo);
+    };
+
+    const setExcepcion = (activa) => {
+      excepcionAutorizada = activa;
+      const toggle = el.querySelector('#excepcion-toggle');
+      toggle.classList.toggle('on', activa);
+      toggle.setAttribute('aria-pressed', String(activa));
+    };
+
+    const renderPlazos = () => {
+      plazoSeleccionado = 0;
+      const esSemanal = frecuencia === 'semanal';
+      const opciones = esSemanal
+        ? Array.from({ length: 12 }, (_, i) => i + 1)
+        : Array.from({ length: 6 }, (_, i) => i + 1);
+      const unidad = esSemanal ? 'semana' : 'quincena';
+      const grid = el.querySelector('#plazo-grid');
+
+      el.querySelector('#plazo-label').textContent = `Número de ${esSemanal ? 'semanas' : 'quincenas'} *`;
+      el.querySelector('#plazo-badge').style.display = 'none';
+      grid.style.cssText = `display:grid;grid-template-columns:repeat(${esSemanal ? 4 : 6},1fr);gap:8px`;
+      grid.innerHTML = opciones.map(plazo => {
+        const interes = getInteresPorPlazo(plazo, frecuencia);
+        return `
+          <button type="button" class="plazo-btn" data-plazo="${plazo}" style="
+            padding:10px 4px;border-radius:var(--r-md);border:1.5px solid var(--sand-mid);
+            background:var(--sand);font-size:13px;font-weight:600;color:var(--ink-mid);cursor:pointer;
+            display:flex;flex-direction:column;align-items:center;gap:2px">
+            <span>${plazo}</span>
+            <span style="font-size:9px;font-weight:400">${interes}%</span>
+          </button>`;
+      }).join('');
+
+      grid.querySelectorAll('.plazo-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          plazoSeleccionado = parseInt(btn.dataset.plazo, 10);
+          grid.querySelectorAll('.plazo-btn').forEach(b => {
+            b.style.background = 'var(--sand)';
+            b.style.borderColor = 'var(--sand-mid)';
+            b.style.color = 'var(--ink-mid)';
+          });
+          btn.style.background = 'var(--navy)';
+          btn.style.borderColor = 'var(--navy)';
+          btn.style.color = '#fff';
+
+          const interes = getInteresPorPlazo(plazoSeleccionado, frecuencia);
+          const badge = el.querySelector('#plazo-badge');
+          badge.style.display = 'block';
+          badge.textContent = `${plazoSeleccionado} ${unidad}${plazoSeleccionado > 1 ? 's' : ''} → ${interes}% de interés`;
+          updateCalc();
+        });
+      });
+    };
 
     // Límite al cambiar cliente
     el.querySelector('#cliente-sel').addEventListener('change', () => {
       const cId = el.querySelector('#cliente-sel').value;
       const c = Store.getCliente(cId);
       const hint = el.querySelector('#limite-hint');
+      setExcepcion(false);
+      excepcionWrap.style.display = 'none';
       if (c) {
         const limite = Store.getLimiteCliente(c);
+        hint.style.color = 'var(--green)';
         hint.textContent = `Línea de crédito disponible: ${Fmt.currency(limite)}`;
-        el.querySelector('#monto').max = limite;
-      } else hint.textContent = '';
+      } else {
+        hint.textContent = '';
+      }
+      updateCalc();
+    });
+
+    // Excepción al límite
+    el.querySelector('#excepcion-toggle').addEventListener('click', () => {
+      setExcepcion(!excepcionAutorizada);
       updateCalc();
     });
 
@@ -1889,26 +1968,7 @@ const Modal = {
         frecuencia = chip.dataset.frec;
         el.querySelectorAll('.method-chip[data-frec]').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
-        updateCalc();
-      });
-    });
-
-    // Quincenas buttons
-    el.querySelectorAll('.quinc-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        quincenasSeleccionadas = parseInt(btn.dataset.q);
-        el.querySelectorAll('.quinc-btn').forEach(b => {
-          b.style.background = 'var(--sand)';
-          b.style.borderColor = 'var(--sand-mid)';
-          b.style.color = 'var(--ink-mid)';
-        });
-        btn.style.background = 'var(--navy)';
-        btn.style.borderColor = 'var(--navy)';
-        btn.style.color = '#fff';
-        const interes = getInteresPorQuincenas(quincenasSeleccionadas);
-        const badge = el.querySelector('#quinc-badge');
-        badge.style.display = 'block';
-        badge.textContent = `${quincenasSeleccionadas} quincena${quincenasSeleccionadas>1?'s':''} → ${interes}% de interés`;
+        renderPlazos();
         updateCalc();
       });
     });
@@ -1920,34 +1980,44 @@ const Modal = {
       const monto = parseFloat(el.querySelector('#monto').value);
       const clienteId = el.querySelector('#cliente-sel').value;
       const fechaInicio = el.querySelector('#fechaInicio').value;
+      const c = Store.getCliente(clienteId);
+      let limitePermitido = true;
 
-      if (!monto || !quincenasSeleccionadas || monto < 100) {
+      // Verificar el límite y ofrecer la excepción solamente cuando sea necesaria
+      if (c) {
+        const limite = Store.getLimiteCliente(c);
+        const hint = el.querySelector('#limite-hint');
+        const excedeLimite = Number.isFinite(monto) && monto > limite;
+
+        if (excedeLimite) {
+          excepcionWrap.style.display = 'block';
+          if (excepcionAutorizada) {
+            hint.style.color = 'var(--warn)';
+            hint.textContent = `Excepción autorizada · límite normal: ${Fmt.currency(limite)}`;
+          } else {
+            hint.style.color = 'var(--danger)';
+            hint.textContent = `Excede el límite de ${Fmt.currency(limite)}`;
+            limitePermitido = false;
+          }
+        } else {
+          excepcionWrap.style.display = 'none';
+          if (excepcionAutorizada) setExcepcion(false);
+          hint.style.color = 'var(--green)';
+          hint.textContent = `Línea disponible: ${Fmt.currency(limite)}`;
+        }
+      } else {
+        excepcionWrap.style.display = 'none';
+      }
+
+      if (!monto || !plazoSeleccionado || monto < 100 || !limitePermitido) {
         preview.style.display = 'none';
         tablaWrap.style.display = 'none';
         saveBtn.disabled = true;
         return;
       }
 
-      // Verificar límite
-      const c = Store.getCliente(clienteId);
-      if (c) {
-        const limite = Store.getLimiteCliente(c);
-        const hint = el.querySelector('#limite-hint');
-        if (monto > limite) {
-          hint.style.color = 'var(--danger)';
-          hint.textContent = `Excede el límite de ${Fmt.currency(limite)}`;
-          preview.style.display = 'none';
-          tablaWrap.style.display = 'none';
-          saveBtn.disabled = true;
-          return;
-        } else {
-          hint.style.color = 'var(--green)';
-          hint.textContent = `Línea disponible: ${Fmt.currency(limite)}`;
-        }
-      }
-
-      const interes = getInteresPorQuincenas(quincenasSeleccionadas);
-      const numPagos = getNumPagos(quincenasSeleccionadas, frecuencia);
+      const interes = getInteresPorPlazo(plazoSeleccionado, frecuencia);
+      const numPagos = plazoSeleccionado;
       const dias = getDiasFrecuencia(frecuencia);
       const { total, cuota } = Store.calcPrestamo(monto, interes, numPagos);
       const interesTotal = total - monto;
@@ -1983,17 +2053,43 @@ const Modal = {
       const clienteId = el.querySelector('#cliente-sel').value;
       const monto = parseFloat(el.querySelector('#monto').value);
       const fechaInicio = el.querySelector('#fechaInicio').value;
-      if (!clienteId || !monto || !quincenasSeleccionadas) { Toast.error('Completa todos los campos'); return; }
-      const interes = getInteresPorQuincenas(quincenasSeleccionadas);
-      const numPagos = getNumPagos(quincenasSeleccionadas, frecuencia);
+      const cliente = Store.getCliente(clienteId);
+
+      if (!clienteId || !monto || !plazoSeleccionado) {
+        Toast.error('Completa todos los campos');
+        return;
+      }
+
+      const limite = cliente ? Store.getLimiteCliente(cliente) : 0;
+      const excedeLimite = cliente && monto > limite;
+      if (excedeLimite && !excepcionAutorizada) {
+        Toast.error('Autoriza la excepción para superar el límite');
+        return;
+      }
+
+      const interes = getInteresPorPlazo(plazoSeleccionado, frecuencia);
+      const numPagos = plazoSeleccionado;
       const { total, cuota } = Store.calcPrestamo(monto, interes, numPagos);
+      const datosPlazo = frecuencia === 'semanal'
+        ? { semanas: plazoSeleccionado }
+        : { quincenas: plazoSeleccionado };
+
       saveBtn.disabled = true;
       saveBtn.innerHTML = '<i class="ti ti-loader"></i> Guardando...';
       try {
         await Store.addPrestamo({
-          clienteId, monto, interes, quincenas: quincenasSeleccionadas,
-          plazo: numPagos, frecuencia, fechaInicio,
-          totalConInteres: total, pagoCuota: cuota,
+          clienteId,
+          monto,
+          interes,
+          ...datosPlazo,
+          unidadPlazo: frecuencia === 'semanal' ? 'semanas' : 'quincenas',
+          plazo: numPagos,
+          frecuencia,
+          fechaInicio,
+          totalConInteres: total,
+          pagoCuota: cuota,
+          excepcionLimite: Boolean(excedeLimite && excepcionAutorizada),
+          limiteCreditoAlRegistrar: limite,
         });
         Toast.success('Préstamo registrado');
         App.navigate('clienteDetalle', clienteId);
@@ -2004,10 +2100,21 @@ const Modal = {
       }
     });
 
+    renderPlazos();
+
+    // Si se abrió desde el detalle de un cliente, muestra desde el inicio su línea disponible.
+    if (preClienteId) {
+      const c = Store.getCliente(preClienteId);
+      if (c) {
+        el.querySelector('#limite-hint').textContent = `Línea de crédito disponible: ${Fmt.currency(Store.getLimiteCliente(c))}`;
+      }
+    }
+
     return el;
   }
 };
 </script><script>const RegistrarPago = {
+
   render(prestamoId) {
     const prestamo = Store.getPrestamo(prestamoId);
     if (!prestamo) return App.navigate('clientes');

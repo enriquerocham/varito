@@ -111,8 +111,17 @@ firebase.initializeApp({
 const db = firebase.firestore();
 
 // ── Helpers ──
-const getInteres = q => q<=2?30:q<=4?40:50;
-const getNumPagos = (q,f) => f==='semanal'?q*2:q;
+const getInteres = (plazo, frecuencia) => {
+  if (frecuencia === 'semanal') {
+    if (plazo <= 4) return 30;
+    if (plazo <= 8) return 40;
+    return 50;
+  }
+  if (plazo <= 2) return 30;
+  if (plazo <= 4) return 40;
+  return 50;
+};
+const getNumPagos = plazo => plazo;
 const getDias = f => f==='semanal'?7:15;
 const fmtC = n => '$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtD = str => { if(!str)return'—'; const[y,m,d]=str.split('-'); const ms=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']; return parseInt(d)+' '+ms[parseInt(m)-1]+' '+y; };
@@ -120,7 +129,7 @@ const today = () => new Date().toISOString().split('T')[0];
 
 let step = 1;
 let fd = {}; // form data
-let quincenas = 0;
+let plazoSeleccionado = 0;
 let frecuencia = 'semanal';
 let firmaUrl = null;
 let metodoPago = 'transferencia';
@@ -340,9 +349,16 @@ function s4(c) {
   const sec = document.createElement('div');
   sec.className = 'section';
   appendLbl(sec, 'Tu solicitud de crédito');
-  appendInfo(sec, 'Clientes nuevos: máximo $2,000. El interés depende del número de quincenas.');
+  appendInfo(sec, 'Si eres cliente nuevo, los préstamos mayores a $2,000 están sujetos a revisión. Puedes solicitarlos, pero su aprobación quedará a consideración de Varito.');
 
-  appendField(sec, 'monto', 'Monto a solicitar *', 'number', '$0.00', fd.monto||'', {min:'100',max:'2000',step:'100'});
+  appendField(sec, 'monto', 'Monto a solicitar *', 'number', '$0.00', fd.monto||'', {min:'100',step:'100'});
+
+  const limiteNote = document.createElement('div');
+  limiteNote.id = 'limite-note';
+  limiteNote.className = 'info-box';
+  limiteNote.style.cssText = 'display:none;background:var(--warn-light);color:#8B5E1A';
+  limiteNote.innerHTML = '<i class="ti ti-alert-triangle" style="color:var(--warn)"></i><span>Este monto supera el límite habitual de $2,000 para clientes nuevos. La solicitud se enviará para revisión especial y podrá ser autorizada, ajustada o rechazada por Varito.</span>';
+  sec.appendChild(limiteNote);
 
   // Frecuencia
   const frecField = document.createElement('div');
@@ -354,12 +370,15 @@ function s4(c) {
   frecGrid.className = 'grid2';
   ['semanal','quincenal'].forEach(f => {
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'frec-btn' + (frecuencia===f?' active':'');
     btn.textContent = f.charAt(0).toUpperCase()+f.slice(1);
     btn.onclick = () => {
       frecuencia = f;
+      plazoSeleccionado = 0;
       frecGrid.querySelectorAll('.frec-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
+      renderPlazos();
       updateCalc();
     };
     frecGrid.appendChild(btn);
@@ -367,34 +386,48 @@ function s4(c) {
   frecField.appendChild(frecGrid);
   sec.appendChild(frecField);
 
-  // Quincenas
-  const quincField = document.createElement('div');
-  quincField.className = 'field';
-  const quincLbl = document.createElement('label');
-  quincLbl.textContent = 'Número de quincenas *';
-  quincField.appendChild(quincLbl);
-  const quincGrid = document.createElement('div');
-  quincGrid.className = 'quinc-grid';
-  [1,2,3,4,5,6].forEach(q => {
-    const btn = document.createElement('button');
-    btn.className = 'quinc-btn' + (quincenas===q?' active':'');
-    btn.innerHTML = '<span style="display:block;font-size:14px">'+q+'</span><span style="font-size:9px;font-weight:400">'+(q<=2?'30%':q<=4?'40%':'50%')+'</span>';
-    btn.onclick = () => {
-      quincenas = q;
-      quincGrid.querySelectorAll('.quinc-btn').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      badge.textContent = q+' quincena'+(q>1?'s':'')+' → '+getInteres(q)+'% de interés';
-      badge.style.display = 'block';
-      updateCalc();
-    };
-    quincGrid.appendChild(btn);
-  });
-  quincField.appendChild(quincGrid);
+  // Plazo dinámico: semanas o quincenas
+  const plazoField = document.createElement('div');
+  plazoField.className = 'field';
+  const plazoLbl = document.createElement('label');
+  plazoLbl.id = 'plazo-label';
+  plazoField.appendChild(plazoLbl);
+  const plazoGrid = document.createElement('div');
+  plazoGrid.id = 'plazo-grid';
+  plazoField.appendChild(plazoGrid);
   const badge = document.createElement('div');
   badge.className = 'interes-badge';
-  if(quincenas){badge.textContent=quincenas+' quincena'+(quincenas>1?'s':'')+' → '+getInteres(quincenas)+'% de interés';badge.style.display='block';}
-  quincField.appendChild(badge);
-  sec.appendChild(quincField);
+  badge.id = 'plazo-badge';
+  plazoField.appendChild(badge);
+  sec.appendChild(plazoField);
+
+  function renderPlazos() {
+    const esSemanal = frecuencia === 'semanal';
+    const totalOpciones = esSemanal ? 12 : 6;
+    const unidad = esSemanal ? 'semana' : 'quincena';
+    plazoLbl.textContent = 'Número de ' + (esSemanal ? 'semanas' : 'quincenas') + ' *';
+    plazoGrid.className = 'quinc-grid';
+    plazoGrid.style.gridTemplateColumns = esSemanal ? 'repeat(4,1fr)' : 'repeat(6,1fr)';
+    plazoGrid.innerHTML = '';
+    badge.style.display = 'none';
+
+    for(let plazo=1; plazo<=totalOpciones; plazo++) {
+      const interes = getInteres(plazo, frecuencia);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'quinc-btn' + (plazoSeleccionado===plazo?' active':'');
+      btn.innerHTML = '<span style="display:block;font-size:14px">'+plazo+'</span><span style="font-size:9px;font-weight:400">'+interes+'%</span>';
+      btn.onclick = () => {
+        plazoSeleccionado = plazo;
+        plazoGrid.querySelectorAll('.quinc-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        badge.textContent = plazo+' '+unidad+(plazo>1?'s':'')+' → '+interes+'% de interés';
+        badge.style.display = 'block';
+        updateCalc();
+      };
+      plazoGrid.appendChild(btn);
+    }
+  }
 
   // Calc box
   const calcBox = document.createElement('div');
@@ -418,16 +451,19 @@ function s4(c) {
     '<tbody id="tabla-body"></tbody></table></div>';
   sec.appendChild(tablaWrap);
 
-  const montoInput = document.getElementById('monto');
-  if(montoInput) montoInput.addEventListener('input', updateCalc);
-  if(quincenas) setTimeout(updateCalc, 50);
-
   function updateCalc() {
     const montoEl = document.getElementById('monto');
     const monto = montoEl ? parseFloat(montoEl.value) : 0;
-    if(!monto||!quincenas||monto<100){calcBox.style.display='none';tablaWrap.style.display='none';return;}
-    const interes = getInteres(quincenas);
-    const numPagos = getNumPagos(quincenas,frecuencia);
+    limiteNote.style.display = monto > 2000 ? 'flex' : 'none';
+
+    if(!monto||!plazoSeleccionado||monto<100){
+      calcBox.style.display='none';
+      tablaWrap.style.display='none';
+      return;
+    }
+
+    const interes = getInteres(plazoSeleccionado, frecuencia);
+    const numPagos = getNumPagos(plazoSeleccionado);
     const dias = getDias(frecuencia);
     const total = Math.round(monto*(1+interes/100)*100)/100;
     const cuota = Math.round((total/numPagos)*100)/100;
@@ -442,13 +478,13 @@ function s4(c) {
     document.getElementById('c-cuota-lbl').textContent = 'Pago '+fl;
     document.getElementById('c-cuo').textContent = fmtC(cuota);
     calcBox.style.display = 'block';
+
     const tbody = document.getElementById('tabla-body');
     tbody.innerHTML = '';
-    let saldo = total;
     const hoy = today();
     for(let i=1;i<=numPagos;i++){
-      const f=new Date(hoy+'T00:00:00');f.setDate(f.getDate()+dias*i);
-      saldo=Math.max(0,Math.round((saldo-cuota)*100)/100);
+      const f=new Date(hoy+'T00:00:00');
+      f.setDate(f.getDate()+dias*i);
       const tr=document.createElement('tr');
       tr.innerHTML='<td>'+i+'</td><td>'+fmtD(f.toISOString().split('T')[0])+'</td><td>'+fmtC(cuota)+'</td><td>'+fmtC(capC)+'</td><td>'+fmtC(intC)+'</td>';
       tbody.appendChild(tr);
@@ -463,9 +499,11 @@ function s4(c) {
   const metodoGrid = document.createElement('div');
   metodoGrid.className = 'grid2';
   const btnTransfer = document.createElement('button');
+  btnTransfer.type = 'button';
   btnTransfer.className = 'frec-btn' + (metodoPago==='transferencia'?' active':'');
   btnTransfer.innerHTML = '<i class="ti ti-building-bank"></i> Transferencia';
   const btnEfectivo = document.createElement('button');
+  btnEfectivo.type = 'button';
   btnEfectivo.className = 'frec-btn' + (metodoPago==='efectivo'?' active':'');
   btnEfectivo.innerHTML = '<i class="ti ti-cash"></i> Efectivo';
   metodoGrid.appendChild(btnTransfer);
@@ -521,12 +559,19 @@ function s4(c) {
   sec.appendChild(btnRow);
   c.appendChild(sec);
 
+  const montoInput = document.getElementById('monto');
+  if(montoInput) montoInput.addEventListener('input', updateCalc);
+  renderPlazos();
+  if(fd.monto) setTimeout(updateCalc, 50);
+
   btnNext.onclick = () => {
     const montoEl = document.getElementById('monto');
     const monto = montoEl ? parseFloat(montoEl.value) : 0;
     if(!monto||monto<100){showErr('err4','Ingresa un monto válido (mínimo $100).');return;}
-    if(monto>2000){showErr('err4','El monto máximo para nuevos clientes es $2,000.');return;}
-    if(!quincenas){showErr('err4','Selecciona el número de quincenas.');return;}
+    if(!plazoSeleccionado){
+      showErr('err4','Selecciona el número de '+(frecuencia==='semanal'?'semanas':'quincenas')+'.');
+      return;
+    }
     if(metodoPago==='transferencia'){
       const banco = val('banco');
       const clabe = val('clabe');
@@ -536,10 +581,19 @@ function s4(c) {
     } else {
       fd.banco = ''; fd.clabe = '';
     }
+
+    const interes = getInteres(plazoSeleccionado, frecuencia);
     fd.metodoEntrega = metodoPago;
-    fd.monto=monto; fd.quincenas=quincenas; fd.semanas=quincenas;
-    fd.frecuencia=frecuencia; fd.interes=getInteres(quincenas);
-    fd.plazo=getNumPagos(quincenas,frecuencia);
+    fd.monto = monto;
+    fd.frecuencia = frecuencia;
+    fd.interes = interes;
+    fd.plazo = plazoSeleccionado;
+    fd.numeroPagos = plazoSeleccionado;
+    fd.unidadPlazo = frecuencia==='semanal' ? 'semanas' : 'quincenas';
+    fd.semanas = frecuencia==='semanal' ? plazoSeleccionado : null;
+    fd.quincenas = frecuencia==='quincenal' ? plazoSeleccionado : null;
+    fd.requiereRevisionLimite = monto > 2000;
+    fd.limiteReferencia = 2000;
     setStep(5); render();
   };
 }

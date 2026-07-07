@@ -510,17 +510,31 @@ const Store = (() => {
         clienteId = c.id;
       }
 
-      // 2. Crear préstamo
-      const { total, cuota } = Store.calcPrestamo(sol.monto, sol.interes, sol.semanas);
+      // 2. Crear préstamo respetando la frecuencia y el plazo solicitados
+      const frecuencia = sol.frecuencia || 'semanal';
+      const plazo = Number(
+        sol.plazo || sol.numeroPagos ||
+        (frecuencia === 'semanal' ? sol.semanas : sol.quincenas) || 1
+      );
+      const interes = Number(sol.interes || 0);
+      const { total, cuota } = Store.calcPrestamo(sol.monto, interes, plazo);
+      const datosPlazo = frecuencia === 'semanal'
+        ? { semanas: plazo }
+        : { quincenas: plazo };
       const prestamo = await Store.addPrestamo({
         clienteId,
         monto: sol.monto,
-        interes: sol.interes,
-        plazo: sol.semanas,
-        frecuencia: 'semanal',
+        interes,
+        ...datosPlazo,
+        unidadPlazo: frecuencia === 'semanal' ? 'semanas' : 'quincenas',
+        plazo,
+        frecuencia,
         fechaInicio: new Date().toISOString().split('T')[0],
         totalConInteres: total,
         pagoCuota: cuota,
+        excepcionLimite: Boolean(sol.requiereRevisionLimite || Number(sol.monto) > 2000),
+        limiteCreditoAlRegistrar: Number(sol.limiteReferencia || 2000),
+        solicitudOrigen: solicitudId,
       });
 
       // 3. Marcar solicitud como autorizada
@@ -2618,8 +2632,16 @@ const Modal = {
       body.appendChild(empty);
     } else {
       solicitudes.forEach(sol => {
-        const interes = getInteresPorQuincenas(sol.quincenas || sol.semanas || 1);
-        const numPagos = getNumPagos(sol.quincenas || sol.semanas || 1, sol.frecuencia || 'semanal');
+        const frecuenciaSolicitud = sol.frecuencia || 'semanal';
+        const numPagos = Number(
+          sol.plazo || sol.numeroPagos ||
+          (frecuenciaSolicitud === 'semanal' ? sol.semanas : sol.quincenas) || 1
+        );
+        const interes = Number(sol.interes || (
+          frecuenciaSolicitud === 'semanal'
+            ? (numPagos <= 4 ? 30 : numPagos <= 8 ? 40 : 50)
+            : getInteresPorQuincenas(numPagos)
+        ));
         const { total, cuota } = Store.calcPrestamo(sol.monto, interes, numPagos);
         const fechaObj = new Date(sol.createdAt);
         const fecha = fechaObj.toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'});
@@ -2644,9 +2666,10 @@ const Modal = {
         // Stats grid
         const statsGrid = document.createElement('div');
         statsGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px';
+        const unidadCorta = frecuenciaSolicitud === 'semanal' ? 'sem.' : 'quinc.';
         const statsData = [
           { val: Fmt.currency(sol.monto), lbl: 'Monto solicitado' },
-          { val: (sol.quincenas || sol.semanas || '?') + ' quinc. · ' + interes + '%', lbl: (sol.frecuencia || 'semanal') },
+          { val: numPagos + ' ' + unidadCorta + ' · ' + interes + '%', lbl: frecuenciaSolicitud },
           { val: Fmt.currency(cuota), lbl: 'Por cuota' },
         ];
         statsData.forEach(s => {
@@ -2657,6 +2680,14 @@ const Modal = {
           statsGrid.appendChild(sc);
         });
         card.appendChild(statsGrid);
+
+        if (sol.requiereRevisionLimite || Number(sol.monto) > 2000) {
+          const revisionBox = document.createElement('div');
+          revisionBox.className = 'info-box';
+          revisionBox.style.cssText = 'margin-bottom:8px;background:var(--warn-light);color:#8B5E1A';
+          revisionBox.innerHTML = '<i class="ti ti-alert-triangle" style="color:var(--warn)"></i><span><strong>Revisión especial:</strong> el monto solicitado supera el límite habitual de $2,000 para clientes nuevos.</span>';
+          card.appendChild(revisionBox);
+        }
 
         // Domicilio
         const domTexto = [sol.calle, sol.numExt ? '#'+sol.numExt : '', sol.colonia, sol.ciudad].filter(Boolean).join(', ');
@@ -2798,7 +2829,7 @@ const Modal = {
                 '', 'Tu prestamo ha sido *AUTORIZADO*',
                 '', '*Monto:* ' + Fmt.currency(sol.monto),
                 '*Interes:* ' + interes + '%',
-                '*Pagos:* ' + numPagos + ' ' + (sol.frecuencia || 'semanal') + 'es',
+                '*Pagos:* ' + numPagos + ' ' + frecuenciaSolicitud + 'es',
                 '*Por cuota:* ' + Fmt.currency(cuota),
                 '*Total a pagar:* ' + Fmt.currency(total),
                 '', '*Tu tabla de pagos:*', tablaTexto,

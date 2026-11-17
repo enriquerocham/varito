@@ -24,6 +24,9 @@
   --navy-light: #E8EAF0;
   --navy-mid: #3D4F7C;
   --accent: #2E7D32;
+  --gold: #4CAF50;
+  --gold-deep: #1B5E20;
+  --rose-deep: #1A2340;
   --sand: #F7F9F7;
   --sand-mid: #E8EDE8;
   --sand-dark: #CDD6CD;
@@ -287,13 +290,55 @@ const getInteresPorQuincenas = (quincenas) => {
   return 50;
 };
 
+// Interés según plazo y frecuencia (misma tabla que el formulario de solicitud)
+const getInteresPorPlazo = (plazo, frecuencia) => {
+  if (frecuencia === 'semanal') {
+    if (plazo <= 4) return 30;
+    if (plazo <= 8) return 40;
+    return 50;
+  }
+  return getInteresPorQuincenas(plazo);
+};
+
 // Número de pagos según frecuencia y quincenas
 const getNumPagos = (quincenas, frecuencia) => {
   return frecuencia === 'semanal' ? quincenas * 2 : quincenas;
 };
 
 // Días entre pagos
-const getDiasFrecuencia = (frecuencia) => frecuencia === 'semanal' ? 7 : 15;
+const getDiasFrecuencia = (frecuencia) => ({ semanal: 7, quincenal: 15, mensual: 30 }[frecuencia] || 7);
+
+// ── Fechas en hora local (México), nunca en UTC ──
+const fechaLocal = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + dd;
+};
+const hoyLocal = () => fechaLocal(new Date());
+const diasEntre = (desdeStr, hastaStr) => {
+  if (!desdeStr || !hastaStr) return 0;
+  const a = new Date(desdeStr + 'T00:00:00');
+  const b = new Date(hastaStr + 'T00:00:00');
+  return Math.round((b - a) / 86400000);
+};
+const redondear = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+// Fechas y montos de cada cuota. La última cuota absorbe los centavos de redondeo
+// para que la suma de cuotas sea exactamente el total del préstamo.
+const calcCuotas = (fechaInicio, total, cuota, plazo, frecuencia) => {
+  const dias = getDiasFrecuencia(frecuencia);
+  const cuotas = [];
+  let saldo = redondear(total);
+  for (let i = 1; i <= plazo; i++) {
+    const f = new Date(fechaInicio + 'T00:00:00');
+    f.setDate(f.getDate() + dias * i);
+    const monto = i === plazo ? redondear(total - cuota * (plazo - 1)) : redondear(cuota);
+    saldo = Math.max(0, redondear(saldo - monto));
+    cuotas.push({ num: i, fecha: fechaLocal(f), monto, saldoRestante: saldo });
+  }
+  return cuotas;
+};
 
 // Línea de crédito por historial
 const getLimiteCredito = (cliente, prestamos) => {
@@ -308,6 +353,31 @@ const getLimiteCredito = (cliente, prestamos) => {
   if (liquidadosPuntuales === 1) return 3000;
   return 2000;
 };
+
+// ── Imágenes: reducir tamaño antes de guardar (Firestore acepta máx. 1 MB por registro) ──
+const comprimirImagen = (dataUrl, maxLado = 1000, calidad = 0.72) => new Promise(resolve => {
+  const img = new Image();
+  img.onload = () => {
+    let w = img.width, h = img.height;
+    const escala = Math.min(1, maxLado / Math.max(w, h));
+    w = Math.round(w * escala); h = Math.round(h * escala);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    resolve(c.toDataURL('image/jpeg', calidad));
+  };
+  img.onerror = () => resolve(dataUrl);
+  img.src = dataUrl;
+});
+const leerImagen = (file, maxLado, calidad) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = async ev => resolve(await comprimirImagen(ev.target.result, maxLado, calidad));
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
 
 const firebaseConfig = {
   apiKey: "AIzaSyCDYns_aIfO87mtln-ORna-9sL_7Xm1IBk",
@@ -329,11 +399,10 @@ function onFbReady(fn) {
 
 function initFirebase() {
   try {
-    const app = firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
     fbReady = true;
     fbCallbacks.forEach(fn => fn());
-    console.log('Firebase conectado');
   } catch (e) {
     console.error('Firebase error:', e);
   }
@@ -342,63 +411,127 @@ function initFirebase() {
 const Store = (() => {
   let state = { clientes: [], prestamos: [], pagos: [], solicitudes: [], config: {} };
   let loaded = false;
+  let fotosReparadas = false;
   const listeners = [];
-  const notify = () => listeners.forEach(fn => fn());
+
+  // Agrupa varias actualizaciones seguidas en un solo redibujado
+  let notifyTimer = null;
+  const notify = () => {
+    if (!loaded) return;
+    clearTimeout(notifyTimer);
+    notifyTimer = setTimeout(() => listeners.forEach(fn => fn()), 60);
+  };
 
   const subscribeAll = () => {
     if (!db) return;
-    db.collection('clientes').orderBy('createdAt','desc').onSnapshot(snap => {
-      state.clientes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      notify();
-    });
+    const pendientes = new Set(['clientes', 'prestamos', 'pagos', 'solicitudes', 'config']);
+    const listo = (key) => {
+      if (!pendientes.has(key)) return;
+      pendientes.delete(key);
+      if (pendientes.size === 0 && !loaded) {
+        loaded = true;
+        listeners.forEach(fn => fn());
+        repararFotosClientes();
+      }
+    };
+    const onErr = (key) => (e) => { console.error('Error cargando ' + key, e); listo(key); };
+    const docs = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    db.collection('clientes').orderBy('createdAt', 'desc').onSnapshot(snap => {
+      state.clientes = docs(snap); listo('clientes'); notify();
+    }, onErr('clientes'));
     db.collection('prestamos').onSnapshot(snap => {
-      state.prestamos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      notify();
-    });
+      state.prestamos = docs(snap); listo('prestamos'); notify();
+    }, onErr('prestamos'));
     db.collection('pagos').onSnapshot(snap => {
-      state.pagos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      notify();
-    });
-    db.collection('solicitudes').orderBy('createdAt','desc').onSnapshot(snap => {
-      state.solicitudes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      notify();
-    });
+      state.pagos = docs(snap); listo('pagos'); notify();
+    }, onErr('pagos'));
+    db.collection('solicitudes').orderBy('createdAt', 'desc').onSnapshot(snap => {
+      state.solicitudes = docs(snap); listo('solicitudes'); notify();
+    }, onErr('solicitudes'));
     db.collection('configuracion').doc('varito').onSnapshot(doc => {
-      state.config = doc.exists ? doc.data() : {};
-      notify();
+      state.config = doc.exists ? doc.data() : {}; listo('config'); notify();
+    }, onErr('config'));
+  };
+
+  // Clientes creados desde una solicitud antes de esta versión quedaron sin las fotos
+  // de INE/domicilio. Se copian desde la solicitud original (solo se llenan campos vacíos).
+  const repararFotosClientes = async () => {
+    if (fotosReparadas || !db) return;
+    fotosReparadas = true;
+    for (const sol of state.solicitudes) {
+      if (sol.estado !== 'autorizada' || !sol.clienteId) continue;
+      const c = state.clientes.find(x => x.id === sol.clienteId);
+      if (!c) continue;
+      const upd = {};
+      if (!c.fotoIneUrl && sol.fotoIneUrl) upd.fotoIneUrl = sol.fotoIneUrl;
+      if (!c.fotoIneBackUrl && sol.fotoIneBackUrl) upd.fotoIneBackUrl = sol.fotoIneBackUrl;
+      if (!c.fotoDomicilioUrl && sol.fotoDomicilioUrl) upd.fotoDomicilioUrl = sol.fotoDomicilioUrl;
+      if (Object.keys(upd).length) {
+        try { await db.collection('clientes').doc(c.id).update(upd); }
+        catch (e) { console.warn('No se pudieron copiar las fotos de', c.nombre, e); }
+      }
+    }
+  };
+
+  const pagosDe = (prestamoId) => state.pagos.filter(pg => pg.prestamoId === prestamoId);
+
+  // Cuotas de un préstamo, con su estado y penalización al día de hoy
+  const tablaDe = (prestamo) => {
+    const base = calcCuotas(prestamo.fechaInicio, prestamo.totalConInteres, prestamo.pagoCuota,
+      Number(prestamo.plazo), prestamo.frecuencia);
+    const pagos = pagosDe(prestamo.id);
+    const hoy = hoyLocal();
+    const interesTotal = prestamo.totalConInteres - prestamo.monto;
+    const interesPorCuota = redondear(interesTotal / prestamo.plazo);
+    const capitalPorCuota = redondear(prestamo.monto / prestamo.plazo);
+    return base.map(c => {
+      const pagoHecho = pagos.find(pg => pg.numCuota === c.num) || null;
+      let estado = 'pendiente';
+      if (pagoHecho) estado = 'pagado';
+      else if (c.fecha < hoy) estado = 'vencido';
+      else if (c.fecha === hoy) estado = 'hoy';
+      const cuota = { ...c, capital: capitalPorCuota, interes: interesPorCuota, estado, pagoHecho };
+      cuota.diasAtraso = estado === 'vencido' ? diasEntre(c.fecha, hoy) : 0;
+      cuota.penalizacion = estado === 'vencido' ? penalizacionPorDias(prestamo, cuota.diasAtraso) : 0;
+      return cuota;
     });
   };
 
-  const loadAll = async () => {
-    if (!db) return;
-    try {
-      const [cSnap, pSnap, pgSnap, sSnap, cfgSnap] = await Promise.all([
-        db.collection('clientes').orderBy('createdAt','desc').get(),
-        db.collection('prestamos').get(),
-        db.collection('pagos').get(),
-        db.collection('solicitudes').orderBy('createdAt','desc').get(),
-        db.collection('configuracion').doc('varito').get(),
-      ]);
-      state.clientes   = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      state.prestamos  = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      state.pagos      = pgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      state.solicitudes= sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      state.config     = cfgSnap.exists ? cfgSnap.data() : {};
-      loaded = true;
-      notify();
-    } catch(e) { console.error('Error cargando:', e); }
+  const penalizacionPorDias = (prestamo, dias) =>
+    dias > 0 ? redondear(prestamo.monto * (PENALIZACION_DIARIA / 100) * dias) : 0;
+
+  // Un pago llegó tarde si su fecha es posterior a la fecha de su cuota
+  const pagoConAtraso = (prestamo, pago, tabla) => {
+    if (typeof pago.diasAtraso === 'number') return pago.diasAtraso > 0;
+    const c = tabla.find(x => x.num === pago.numCuota);
+    return c ? pago.fecha > c.fecha : false;
+  };
+
+  // Recalcula estado (activo/liquidado) y si tuvo atraso, a partir de los pagos reales
+  const recalcularPrestamo = async (prestamoId, pagosPrestamo) => {
+    const p = state.prestamos.find(x => x.id === prestamoId);
+    if (!p) return;
+    const tabla = calcCuotas(p.fechaInicio, p.totalConInteres, p.pagoCuota, Number(p.plazo), p.frecuencia);
+    const cuotasPagadas = new Set(pagosPrestamo.map(pg => pg.numCuota));
+    const pagado = pagosPrestamo.reduce((s, pg) => s + (Number(pg.monto) || 0), 0);
+    const liquidado = cuotasPagadas.size >= Number(p.plazo) || pagado >= p.totalConInteres - 0.009;
+    const tuvoAtraso = pagosPrestamo.some(pg => pagoConAtraso(p, pg, tabla));
+    const upd = {};
+    const estado = liquidado ? 'liquidado' : 'activo';
+    if (p.estado !== estado) upd.estado = estado;
+    if (Boolean(p.tuvoAtraso) !== tuvoAtraso) upd.tuvoAtraso = tuvoAtraso;
+    if (Object.keys(upd).length) await db.collection('prestamos').doc(prestamoId).update(upd);
   };
 
   return {
     ACREEDORA, APP_NAME, PENALIZACION_DIARIA,
-    getInteresPorQuincenas,
+    getInteresPorQuincenas, getInteresPorPlazo,
 
     subscribe: (fn) => { listeners.push(fn); },
     isLoaded: () => loaded,
 
-    init: () => {
-      onFbReady(() => { subscribeAll(); loadAll(); });
-    },
+    init: () => { onFbReady(() => subscribeAll()); },
 
     getClientes:    () => [...state.clientes],
     getPrestamos:   () => [...state.prestamos],
@@ -410,21 +543,24 @@ const Store = (() => {
     getPrestamo: (id) => state.prestamos.find(p => p.id === id),
 
     getPagosByPrestamo: (pid) =>
-      state.pagos.filter(p => p.prestamoId === pid)
-        .sort((a,b) => new Date(a.fecha) - new Date(b.fecha)),
+      pagosDe(pid).sort((a, b) => (a.numCuota || 0) - (b.numCuota || 0) || String(a.fecha).localeCompare(String(b.fecha))),
 
     getPrestamosByCliente: (cid) =>
-      state.prestamos.filter(p => p.clienteId === cid),
+      state.prestamos.filter(p => p.clienteId === cid)
+        .sort((a, b) => (b.folioNum || 0) - (a.folioNum || 0)),
 
     getLimiteCliente: (cliente) =>
       getLimiteCredito(cliente, state.prestamos),
 
     getDomicilioCompleto: (c) =>
-      [c.calle, c.numExt ? '#'+c.numExt : '', c.numInt ? 'Int. '+c.numInt : '',
+      [c.calle, c.numExt ? '#' + c.numExt : '', c.numInt ? 'Int. ' + c.numInt : '',
        c.colonia, c.cp, c.ciudad].filter(Boolean).join(', '),
 
     getSolicitudesPendientes: () =>
       state.solicitudes.filter(s => s.estado === 'pendiente'),
+
+    // Total recibido en un pago (cuota + penalización)
+    totalPago: (pg) => redondear((Number(pg.monto) || 0) + (Number(pg.penalizacion) || 0)),
 
     // ── Config / Firma Yaretzi ──
     guardarFirmaYaretzi: async (firmaUrl) => {
@@ -436,7 +572,7 @@ const Store = (() => {
 
     // ── CRUD clientes ──
     addCliente: async (data) => {
-      const doc = { ...data, createdAt: new Date().toISOString().split('T')[0] };
+      const doc = { ...data, createdAt: hoyLocal() };
       const ref = await db.collection('clientes').add(doc);
       return { id: ref.id, ...doc };
     },
@@ -447,8 +583,7 @@ const Store = (() => {
       const batch = db.batch();
       const ps = state.prestamos.filter(p => p.clienteId === id);
       for (const p of ps) {
-        state.pagos.filter(pg => pg.prestamoId === p.id)
-          .forEach(pg => batch.delete(db.collection('pagos').doc(pg.id)));
+        pagosDe(p.id).forEach(pg => batch.delete(db.collection('pagos').doc(pg.id)));
         batch.delete(db.collection('prestamos').doc(p.id));
       }
       batch.delete(db.collection('clientes').doc(id));
@@ -456,30 +591,90 @@ const Store = (() => {
     },
 
     // ── CRUD préstamos ──
+    // El folio se asigna con una transacción sobre un contador compartido,
+    // así dos dispositivos nunca generan el mismo número de pagaré.
     addPrestamo: async (data) => {
-      const folioNum = state.prestamos.length > 0
-        ? Math.max(...state.prestamos.map(p => p.folioNum || 0)) + 1 : 1;
-      const doc = { ...data, estado: 'activo', folioNum, tuvoAtraso: false };
-      const ref = await db.collection('prestamos').add(doc);
-      return { id: ref.id, ...doc };
+      const maxLocal = state.prestamos.reduce((m, p) => Math.max(m, p.folioNum || 0), 0);
+      const contadorRef = db.collection('configuracion').doc('contadores');
+      const nuevoRef = db.collection('prestamos').doc();
+      let doc;
+      await db.runTransaction(async (t) => {
+        const snap = await t.get(contadorRef);
+        const ultimo = Math.max(snap.exists ? (snap.data().ultimoFolioPagare || 0) : 0, maxLocal);
+        const folioNum = ultimo + 1;
+        doc = { ...data, estado: 'activo', folioNum, tuvoAtraso: false, createdAt: new Date().toISOString() };
+        t.set(contadorRef, { ultimoFolioPagare: folioNum }, { merge: true });
+        t.set(nuevoRef, doc);
+      });
+      return { id: nuevoRef.id, ...doc };
     },
 
-    // ── CRUD pagos ──
-    addPago: async (data) => {
-      const ref = await db.collection('pagos').add(data);
-      const prestamo = state.prestamos.find(p => p.id === data.prestamoId);
-      if (prestamo) {
-        const count = state.pagos.filter(p => p.prestamoId === data.prestamoId).length + 1;
-        // Check if late
-        const tabla = Store.getTableraAmortizacion(prestamo);
-        const cuotaActual = tabla.find(c => c.num === data.numCuota);
-        const updates = {};
-        if (count >= prestamo.plazo) updates.estado = 'liquidado';
-        if (cuotaActual && Fmt.daysLate(cuotaActual.fecha) > 0) updates.tuvoAtraso = true;
-        if (Object.keys(updates).length > 0)
-          await db.collection('prestamos').doc(data.prestamoId).update(updates);
-      }
-      return { id: ref.id, ...data };
+    deletePrestamo: async (prestamoId) => {
+      const batch = db.batch();
+      pagosDe(prestamoId).forEach(pg => batch.delete(db.collection('pagos').doc(pg.id)));
+      batch.delete(db.collection('prestamos').doc(prestamoId));
+      await batch.commit();
+    },
+
+    // ── Pagos ──
+    // Registra una o varias cuotas completas. Cada cuota queda como un pago con su
+    // penalización calculada a la fecha del pago. Todas comparten un grupoId para
+    // poder emitir un solo recibo.
+    registrarPagos: async (prestamoId, numsCuota, datos) => {
+      const p = state.prestamos.find(x => x.id === prestamoId);
+      if (!p) throw new Error('Préstamo no encontrado');
+      const tabla = calcCuotas(p.fechaInicio, p.totalConInteres, p.pagoCuota, Number(p.plazo), p.frecuencia);
+      const yaPagadas = new Set(pagosDe(prestamoId).map(pg => pg.numCuota));
+      const grupoId = 'G' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const batch = db.batch();
+      const nuevos = [];
+      numsCuota.forEach((num, idx) => {
+        if (yaPagadas.has(num)) throw new Error('La cuota ' + num + ' ya estaba pagada');
+        const c = tabla.find(x => x.num === num);
+        if (!c) throw new Error('Cuota inválida');
+        const diasAtraso = Math.max(0, diasEntre(c.fecha, datos.fecha));
+        const penalCalculada = penalizacionPorDias(p, diasAtraso);
+        const penalizacion = datos.condonarPenalizacion ? 0 : penalCalculada;
+        const pago = {
+          prestamoId,
+          clienteId: p.clienteId,
+          numCuota: num,
+          monto: c.monto,
+          fechaCuota: c.fecha,
+          diasAtraso,
+          penalizacion,
+          penalizacionCondonada: datos.condonarPenalizacion ? penalCalculada : 0,
+          fecha: datos.fecha,
+          metodo: datos.metodo,
+          folio: datos.folio || '',
+          nota: datos.nota || '',
+          // El comprobante se guarda solo en el primer pago del grupo
+          comprobanteUrl: idx === 0 ? (datos.comprobanteUrl || null) : null,
+          grupoId,
+          registradoEn: new Date().toISOString(),
+        };
+        const ref = db.collection('pagos').doc();
+        batch.set(ref, pago);
+        nuevos.push({ id: ref.id, ...pago });
+      });
+      await batch.commit();
+      await recalcularPrestamo(prestamoId, [...pagosDe(prestamoId), ...nuevos]);
+      return nuevos;
+    },
+
+    // Elimina un pago (solo se permite el más reciente del préstamo, para no dejar huecos)
+    deletePago: async (pagoId) => {
+      const pg = state.pagos.find(x => x.id === pagoId);
+      if (!pg) throw new Error('Pago no encontrado');
+      const grupo = pg.grupoId
+        ? pagosDe(pg.prestamoId).filter(x => x.grupoId === pg.grupoId)
+        : [pg];
+      const batch = db.batch();
+      grupo.forEach(x => batch.delete(db.collection('pagos').doc(x.id)));
+      await batch.commit();
+      const ids = new Set(grupo.map(x => x.id));
+      await recalcularPrestamo(pg.prestamoId, pagosDe(pg.prestamoId).filter(x => !ids.has(x.id)));
+      return grupo.length;
     },
 
     // ── Solicitudes ──
@@ -489,23 +684,38 @@ const Store = (() => {
       return { id: ref.id, ...doc };
     },
 
+    // Condiciones de una solicitud, recalculadas aquí (no se confía en el interés que manda el formulario)
+    condicionesSolicitud: (sol) => {
+      const frecuencia = sol.frecuencia || 'semanal';
+      const plazo = Number(
+        sol.plazo || sol.numeroPagos ||
+        (frecuencia === 'semanal' ? sol.semanas : sol.quincenas) || 1
+      );
+      const monto = Number(sol.monto) || 0;
+      const interes = getInteresPorPlazo(plazo, frecuencia);
+      const { total, cuota } = Store.calcPrestamo(monto, interes, plazo);
+      return { frecuencia, plazo, monto, interes, total, cuota };
+    },
+
     autorizarSolicitud: async (solicitudId) => {
       const sol = state.solicitudes.find(s => s.id === solicitudId);
       if (!sol) throw new Error('Solicitud no encontrada');
 
-      // 1. Crear o actualizar cliente
+      // 1. Crear o actualizar cliente (con sus fotos de INE y domicilio)
       let clienteId = sol.clienteId;
       if (!clienteId) {
         const clienteData = {
           nombre: sol.nombre, telefono: sol.telefono,
-          fechaNacimiento: sol.fechaNacimiento, ine: sol.ine || '',
-          calle: sol.calle, numExt: sol.numExt, numInt: sol.numInt || '',
-          colonia: sol.colonia, cp: sol.cp, ciudad: sol.ciudad,
-          refNombre: sol.refNombre, refParentesco: sol.refParentesco,
-          refTelefono: sol.refTelefono, refDireccion: sol.refDireccion || '',
+          fechaNacimiento: sol.fechaNacimiento || '', ine: sol.ine || '',
+          calle: sol.calle || '', numExt: sol.numExt || '', numInt: sol.numInt || '',
+          colonia: sol.colonia || '', cp: sol.cp || '', ciudad: sol.ciudad || '',
+          refNombre: sol.refNombre || '', refParentesco: sol.refParentesco || '',
+          refTelefono: sol.refTelefono || '', refDireccion: sol.refDireccion || '',
           firmaClienteUrl: sol.firmaClienteUrl || '',
           firmaUrl: sol.firmaClienteUrl || '',
-          fotoIneUrl: null, fotoDomicilioUrl: null,
+          fotoIneUrl: sol.fotoIneUrl || null,
+          fotoIneBackUrl: sol.fotoIneBackUrl || null,
+          fotoDomicilioUrl: sol.fotoDomicilioUrl || null,
         };
         const c = await Store.addCliente(clienteData);
         clienteId = c.id;
@@ -516,29 +726,20 @@ const Store = (() => {
         });
       }
 
-      // 2. Crear préstamo respetando la frecuencia y el plazo solicitados
-      const frecuencia = sol.frecuencia || 'semanal';
-      const plazo = Number(
-        sol.plazo || sol.numeroPagos ||
-        (frecuencia === 'semanal' ? sol.semanas : sol.quincenas) || 1
-      );
-      const interes = Number(sol.interes || 0);
-      const { total, cuota } = Store.calcPrestamo(sol.monto, interes, plazo);
-      const datosPlazo = frecuencia === 'semanal'
-        ? { semanas: plazo }
-        : { quincenas: plazo };
+      // 2. Crear préstamo con la tabla de interés oficial
+      const { frecuencia, plazo, monto, interes, total, cuota } = Store.condicionesSolicitud(sol);
       const prestamo = await Store.addPrestamo({
         clienteId,
-        monto: sol.monto,
+        monto,
         interes,
-        ...datosPlazo,
+        ...(frecuencia === 'semanal' ? { semanas: plazo } : { quincenas: plazo }),
         unidadPlazo: frecuencia === 'semanal' ? 'semanas' : 'quincenas',
         plazo,
         frecuencia,
-        fechaInicio: new Date().toISOString().split('T')[0],
+        fechaInicio: hoyLocal(),
         totalConInteres: total,
         pagoCuota: cuota,
-        excepcionLimite: Boolean(sol.requiereRevisionLimite || Number(sol.monto) > 2000),
+        excepcionLimite: Boolean(sol.requiereRevisionLimite || monto > 2000),
         limiteCreditoAlRegistrar: Number(sol.limiteReferencia || 2000),
         solicitudOrigen: solicitudId,
       });
@@ -560,31 +761,34 @@ const Store = (() => {
     getSaldoRestante: (prestamoId) => {
       const p = state.prestamos.find(pr => pr.id === prestamoId);
       if (!p) return 0;
-      const pagado = state.pagos
-        .filter(pg => pg.prestamoId === prestamoId)
-        .reduce((s, pg) => s + pg.monto, 0);
-      return Math.max(0, p.totalConInteres - pagado);
+      const pagado = pagosDe(prestamoId).reduce((s, pg) => s + (Number(pg.monto) || 0), 0);
+      return Math.max(0, redondear(p.totalConInteres - pagado));
     },
 
-    getPagosCount: (prestamoId) =>
-      state.pagos.filter(pg => pg.prestamoId === prestamoId).length,
-
-    getPenalizacion: (prestamo, cuota) => {
-      if (cuota.estado !== 'vencido') return 0;
-      const dias = Fmt.daysLate(cuota.fecha);
-      return Math.round(prestamo.monto * (PENALIZACION_DIARIA / 100) * dias * 100) / 100;
+    // Saldo que quedaba justo después de un pago (para recibos reimpresos)
+    getSaldoDespuesDe: (prestamo, pagosRecibo) => {
+      const maxCuota = Math.max(...pagosRecibo.map(x => x.numCuota || 0));
+      const pagado = pagosDe(prestamo.id)
+        .filter(pg => (pg.numCuota || 0) <= maxCuota)
+        .reduce((s, pg) => s + (Number(pg.monto) || 0), 0);
+      return Math.max(0, redondear(prestamo.totalConInteres - pagado));
     },
+
+    getPagosCount: (prestamoId) => pagosDe(prestamoId).length,
+
+    // Penalización de una cuota vencida a una fecha (por defecto, hoy)
+    getPenalizacion: (prestamo, cuota, fechaRef) => {
+      if (cuota.estado === 'pagado') return 0;
+      return penalizacionPorDias(prestamo, Math.max(0, diasEntre(cuota.fecha, fechaRef || hoyLocal())));
+    },
+    penalizacionPorDias,
 
     getStats: () => {
       const activos = state.prestamos.filter(p => p.estado === 'activo');
-      const cartera = activos.reduce((s, p) => {
-        const pagado = state.pagos.filter(pg => pg.prestamoId === p.id)
-          .reduce((a, pg) => a + pg.monto, 0);
-        return s + Math.max(0, p.totalConInteres - pagado);
-      }, 0);
-      const hoy = new Date().toISOString().split('T')[0];
+      const cartera = activos.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0);
+      const hoy = hoyLocal();
       const pagosHoy = state.pagos.filter(pg => pg.fecha === hoy)
-        .reduce((s, pg) => s + pg.monto, 0);
+        .reduce((s, pg) => s + Store.totalPago(pg), 0);
       const pendientes = state.solicitudes.filter(s => s.estado === 'pendiente').length;
       return {
         cartera, pagosHoy,
@@ -594,89 +798,94 @@ const Store = (() => {
       };
     },
 
-    getTableraAmortizacion: (prestamo) => {
-      const cuotas = [];
-      let saldo = prestamo.totalConInteres;
-      const freq = { semanal: 7, quincenal: 15, mensual: 30 }[prestamo.frecuencia] || 7;
-      const pagosHechos = state.pagos.filter(pg => pg.prestamoId === prestamo.id);
-      const hoy = new Date().toISOString().split('T')[0];
-      const interesTotal = prestamo.totalConInteres - prestamo.monto;
-      const interesPorCuota = Math.round((interesTotal / prestamo.plazo) * 100) / 100;
-      const capitalPorCuota = Math.round((prestamo.monto / prestamo.plazo) * 100) / 100;
+    getTableraAmortizacion: (prestamo) => tablaDe(prestamo),
 
-      for (let i = 1; i <= prestamo.plazo; i++) {
-        const fecha = new Date(prestamo.fechaInicio + 'T00:00:00');
-        fecha.setDate(fecha.getDate() + freq * i);
-        const fechaStr = fecha.toISOString().split('T')[0];
-        const pagoHecho = pagosHechos.find(pg => pg.numCuota === i);
-        saldo = Math.max(0, Math.round((saldo - prestamo.pagoCuota) * 100) / 100);
-        let estado = 'pendiente';
-        if (pagoHecho) estado = 'pagado';
-        else if (fechaStr < hoy) estado = 'vencido';
-        else if (fechaStr === hoy) estado = 'hoy';
-        cuotas.push({
-          num: i, fecha: fechaStr, monto: prestamo.pagoCuota,
-          capital: capitalPorCuota, interes: interesPorCuota,
-          saldoRestante: saldo, estado, pagoHecho
-        });
-      }
-      return cuotas;
-    },
-
-    calcPrestamo: (monto, interesPct, semanas) => {
-      const total = Math.round(monto * (1 + interesPct / 100) * 100) / 100;
-      const cuota = Math.round((total / semanas) * 100) / 100;
+    calcPrestamo: (monto, interesPct, numPagos) => {
+      const total = redondear(monto * (1 + interesPct / 100));
+      const cuota = redondear(total / numPagos);
       return { total, cuota };
     },
   };
 })();
-</script><script>const Fmt = {
-  currency: (n) => '$' + Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+</script><script>// Convierte un número entero (0 a 999,999,999) a letras en español
+const numeroALetras = (() => {
+  const UNIDADES = ['', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve',
+    'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve',
+    'veinte', 'veintiún', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
+  const DECENAS = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+  const CENTENAS = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+
+  const menorACien = (n) => {
+    if (n < 30) return UNIDADES[n];
+    const d = Math.floor(n / 10), u = n % 10;
+    return DECENAS[d] + (u ? ' y ' + UNIDADES[u] : '');
+  };
+  const menorAMil = (n) => {
+    if (n === 100) return 'cien';
+    const c = Math.floor(n / 100), r = n % 100;
+    return [CENTENAS[c], r ? menorACien(r) : ''].filter(Boolean).join(' ');
+  };
+  return (n) => {
+    if (n === 0) return 'cero';
+    const millones = Math.floor(n / 1000000);
+    const miles = Math.floor((n % 1000000) / 1000);
+    const resto = n % 1000;
+    const partes = [];
+    if (millones) partes.push(millones === 1 ? 'un millón' : menorAMil(millones) + ' millones');
+    if (miles) partes.push(miles === 1 ? 'mil' : menorAMil(miles) + ' mil');
+    if (resto) partes.push(menorAMil(resto));
+    return partes.join(' ');
+  };
+})();
+
+const Fmt = {
+  currency: (n) => '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  // Escapa texto para insertarlo con seguridad dentro de HTML
+  esc: (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;'),
   date: (str) => {
     if (!str) return '—';
-    const [y, m, d] = str.split('-');
+    const [y, m, d] = String(str).slice(0, 10).split('-');
     const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
     return `${parseInt(d)} ${months[parseInt(m)-1]} ${y}`;
   },
+  dateLarga: (str) => {
+    const [y, m, d] = String(str).slice(0, 10).split('-');
+    const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    return `${parseInt(d)} de ${meses[parseInt(m)-1]} de ${y}`;
+  },
   dateShort: (str) => {
     if (!str) return '—';
-    const [y, m, d] = str.split('-');
+    const [y, m, d] = String(str).slice(0, 10).split('-');
     return `${d}/${m}/${y.slice(2)}`;
   },
-  initials: (nombre) => nombre.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase(),
+  initials: (nombre) => String(nombre || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?',
   avatarColor: (nombre) => {
     const colors = ['av-rose','av-mauve','av-amber','av-teal','av-blue'];
     let h = 0;
-    for (let c of nombre) h = (h * 31 + c.charCodeAt(0)) % colors.length;
+    for (let c of String(nombre || '')) h = (h * 31 + c.charCodeAt(0)) % colors.length;
     return colors[Math.abs(h)];
   },
   folioPagare: (num) => `VR-PAG-${String(num).padStart(4,'0')}`,
   folioRecibo: (prestamoNum, cuotaNum) => `VR-REC-${String(prestamoNum).padStart(4,'0')}-${String(cuotaNum).padStart(2,'0')}`,
-  today: () => new Date().toISOString().split('T')[0],
-  daysLate: (fechaStr) => {
-    const hoy = new Date(); hoy.setHours(0,0,0,0);
-    const fecha = new Date(fechaStr + 'T00:00:00');
-    const diff = Math.floor((hoy - fecha) / 86400000);
-    return Math.max(0, diff);
-  },
+  today: () => hoyLocal(),
+  daysLate: (fechaStr) => Math.max(0, diasEntre(fechaStr, hoyLocal())),
   frecuenciaLabel: (f) => ({ semanal: 'Semanal', quincenal: 'Quincenal', mensual: 'Mensual' }[f] || f),
+  frecuenciaPlural: (f) => ({ semanal: 'semanales', quincenal: 'quincenales', mensual: 'mensuales' }[f] || f),
+  metodoLabel: (m) => ({ transferencia: 'Transferencia', efectivo: 'Efectivo', codi: 'CoDi' }[m] || (m ? m.charAt(0).toUpperCase() + m.slice(1) : '—')),
   statusLabel: (e) => ({ activo: 'Activo', liquidado: 'Liquidado', atrasado: 'Atrasado' }[e] || e),
+  // Importe con letra: "Mil seiscientos veinticinco pesos 50/100 M.N."
   importe: (n) => {
-    const unidades = ['','un ','dos ','tres ','cuatro ','cinco ','seis ','siete ','ocho ','nueve '];
-    const decenas = ['','diez ','veinte ','treinta ','cuarenta ','cincuenta ','sesenta ','setenta ','ochenta ','noventa '];
-    const especiales = ['diez','once','doce','trece','catorce','quince','dieciséis','diecisiete','dieciocho','diecinueve'];
-    const centenas = ['','ciento ','doscientos ','trescientos ','cuatrocientos ','quinientos ','seiscientos ','setecientos ','ochocientos ','novecientos '];
-    const miles = ['','mil ','dos mil ','tres mil ','cuatro mil ','cinco mil ','seis mil ','siete mil ','ocho mil ','nueve mil ','diez mil ','once mil ','doce mil ','trece mil ','catorce mil ','quince mil ','dieciséis mil ','diecisiete mil ','dieciocho mil ','diecinueve mil '];
-    let entero = Math.floor(n);
-    let cents = Math.round((n - entero) * 100);
-    let result = '';
-    if (entero >= 20000) return entero.toLocaleString('es-MX') + ' pesos ' + String(cents).padStart(2,'0') + '/100 M.N.';
-    if (entero >= 1000) { result += miles[Math.floor(entero/1000)]; entero %= 1000; }
-    if (entero >= 100) { result += centenas[Math.floor(entero/100)]; entero %= 100; }
-    if (entero >= 10 && entero < 20) { result += especiales[entero-10] + ' '; entero = 0; }
-    else if (entero >= 20) { result += decenas[Math.floor(entero/10)]; entero %= 10; }
-    if (entero > 0) result += unidades[entero];
-    return result.trim().charAt(0).toUpperCase() + result.trim().slice(1) + ' pesos ' + String(cents).padStart(2,'0') + '/100 M.N.';
+    const centavosTotales = Math.round((Number(n) || 0) * 100);
+    const entero = Math.floor(centavosTotales / 100);
+    const cents = centavosTotales % 100;
+    let letras = numeroALetras(entero);
+    // "un" al final se escribe "un peso"; "veintiún pesos", "un millón de pesos"
+    const deMillon = entero >= 1000000 && entero % 1000000 === 0;
+    letras = letras.charAt(0).toUpperCase() + letras.slice(1);
+    const moneda = entero === 1 ? 'peso' : 'pesos';
+    return letras + (deMillon ? ' de ' : ' ') + moneda + ' ' + String(cents).padStart(2, '0') + '/100 M.N.';
   },
 };
 </script><script>const BASE_URL = 'https://enriquerocham.github.io/varito';
@@ -717,11 +926,13 @@ const PDF = {
 
   generarPagare: (prestamo, cliente) => {
     const tabla = Store.getTableraAmortizacion(prestamo);
-    const domicilio = Store.getDomicilioCompleto(cliente);
-    const refCompleta = [cliente.refNombre, cliente.refParentesco, cliente.refTelefono, cliente.refDireccion].filter(Boolean).join(' · ');
-    const hoy = new Date();
+    const E = Fmt.esc;
+    const domicilio = E(Store.getDomicilioCompleto(cliente));
+    // El pagaré siempre lleva la fecha en que se otorgó el préstamo, no la de impresión
+    const [fy, fm, fd] = String(prestamo.fechaInicio || hoyLocal()).split('-').map(Number);
     const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-    const fechaLarga = 'a los ' + hoy.getDate() + ' días del mes de ' + meses[hoy.getMonth()] + ' de ' + hoy.getFullYear();
+    const fechaLarga = 'a los ' + fd + ' días del mes de ' + meses[fm - 1] + ' de ' + fy;
+    const nombreCliente = E(cliente.nombre);
 
     const firmaYaretziHtml = Store.getFirmaYaretzi()
       ? '<img src="' + Store.getFirmaYaretzi() + '" style="height:52px;width:auto;max-width:160px;object-fit:contain;display:block;margin:0 auto 4px"/>'
@@ -799,9 +1010,9 @@ const PDF = {
     + '  <div class="letras">(' + Fmt.importe(prestamo.totalConInteres) + ')</div>\n'
     + '</div>\n'
 
-    + '<p class="body-text">Conste por medio del presente instrumento que yo, <strong>' + cliente.nombre + '</strong>, '
+    + '<p class="body-text">Conste por medio del presente instrumento que yo, <strong>' + nombreCliente + '</strong>, '
     + 'mexicano(a), mayor de edad, con domicilio en <strong>' + domicilio + '</strong>, '
-    + 'identificado(a) con credencial para votar (INE) con clave de elector: <strong>' + (cliente.ine || 'Verificar en expediente') + '</strong>, '
+    + 'identificado(a) con credencial para votar (INE) con clave de elector: <strong>' + E(cliente.ine || 'Verificar en expediente') + '</strong>, '
     + 'en mi carácter de <em>suscriptor</em>, me obligo <strong>incondicional e irrevocablemente</strong> '
     + 'a pagar a la orden de <strong>' + Store.ACREEDORA + '</strong>, en su carácter de <em>beneficiaria</em>, '
     + 'la cantidad de <strong>' + Fmt.currency(prestamo.totalConInteres) + '</strong> '
@@ -819,8 +1030,8 @@ const PDF = {
     + '  <tr><td>Capital prestado</td><td>' + Fmt.currency(prestamo.monto) + '</td></tr>\n'
     + '  <tr><td>Tasa de interés fija</td><td>' + prestamo.interes + '% sobre el capital prestado</td></tr>\n'
     + '  <tr><td>Total a pagar</td><td><strong>' + Fmt.currency(prestamo.totalConInteres) + '</strong></td></tr>\n'
-    + '  <tr><td>Número de pagos</td><td>' + prestamo.plazo + ' pagos ' + Fmt.frecuenciaLabel(prestamo.frecuencia).toLowerCase() + 'es</td></tr>\n'
-    + '  <tr><td>Monto por cuota</td><td>' + Fmt.currency(prestamo.pagoCuota) + '</td></tr>\n'
+    + '  <tr><td>Número de pagos</td><td>' + prestamo.plazo + ' pagos ' + Fmt.frecuenciaPlural(prestamo.frecuencia) + '</td></tr>\n'
+    + '  <tr><td>Monto por cuota</td><td>' + Fmt.currency(prestamo.pagoCuota) + (tabla.length && tabla[tabla.length-1].monto !== prestamo.pagoCuota ? ' (última: ' + Fmt.currency(tabla[tabla.length-1].monto) + ')' : '') + '</td></tr>\n'
     + '  <tr><td>Fecha del primer pago</td><td>' + Fmt.date(tabla[0] ? tabla[0].fecha : '') + '</td></tr>\n'
     + '  <tr><td>Fecha del último pago</td><td>' + Fmt.date(tabla[tabla.length-1] ? tabla[tabla.length-1].fecha : '') + '</td></tr>\n'
     + '</table>\n'
@@ -835,10 +1046,10 @@ const PDF = {
 
     + '<div class="clausula">Cláusula IV — Referencia y aval moral</div>\n'
     + '<table class="info">\n'
-    + '  <tr><td>Nombre</td><td>' + (cliente.refNombre || '—') + '</td></tr>\n'
-    + '  <tr><td>Parentesco</td><td>' + (cliente.refParentesco || '—') + '</td></tr>\n'
-    + '  <tr><td>Teléfono</td><td>' + (cliente.refTelefono || '—') + '</td></tr>\n'
-    + (cliente.refDireccion ? '  <tr><td>Dirección</td><td>' + cliente.refDireccion + '</td></tr>\n' : '')
+    + '  <tr><td>Nombre</td><td>' + E(cliente.refNombre || '—') + '</td></tr>\n'
+    + '  <tr><td>Parentesco</td><td>' + E(cliente.refParentesco || '—') + '</td></tr>\n'
+    + '  <tr><td>Teléfono</td><td>' + E(cliente.refTelefono || '—') + '</td></tr>\n'
+    + (cliente.refDireccion ? '  <tr><td>Dirección</td><td>' + E(cliente.refDireccion) + '</td></tr>\n' : '')
     + '</table>\n'
 
     + '<div class="legal-box"><strong>Fundamento legal:</strong> El presente pagaré tiene plena validez como <strong>título de crédito ejecutivo</strong> '
@@ -857,7 +1068,7 @@ const PDF = {
     + '  <div class="sign-col">\n'
     + '    ' + firmaClienteHtml + '\n'
     + '    <div class="sign-line"></div>\n'
-    + '    <div class="sign-name">' + cliente.nombre + '</div>\n'
+    + '    <div class="sign-name">' + nombreCliente + '</div>\n'
     + '    <div class="sign-role">Suscriptor — Deudor</div>\n'
     + '  </div>\n'
     + '</div>\n'
@@ -866,16 +1077,42 @@ const PDF = {
     + '</div>\n'
     + '</body>\n</html>';
 
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    PDF.imprimirCuandoListo(w);
+    const w = PDF.abrirVentana(html);
+    if (w) PDF.imprimirCuandoListo(w);
   },
 
-  generarRecibo: (pago, prestamo, cliente, numCuota) => {
-    const folio = Fmt.folioRecibo(prestamo.folioNum, numCuota || Store.getPagosCount(prestamo.id));
-    const saldo = Store.getSaldoRestante(prestamo.id);
-    const pagosCount = Store.getPagosCount(prestamo.id);
+  // Abre una ventana para imprimir; si el navegador la bloquea, avisa
+  abrirVentana: (html) => {
+    const w = window.open('', '_blank');
+    if (!w) { Toast.error('Permite las ventanas emergentes para ver el documento'); return null; }
+    w.document.write(html);
+    w.document.close();
+    return w;
+  },
+
+  // Recibo de un pago. Si el pago fue de varias cuotas a la vez, el recibo las incluye todas.
+  // El saldo y el número de pago son los que había en ese momento, aunque se reimprima después.
+  generarRecibo: (pago, prestamo, cliente) => {
+    const E = Fmt.esc;
+    const todos = Store.getPagosByPrestamo(prestamo.id);
+    const grupo = (pago.grupoId ? todos.filter(x => x.grupoId === pago.grupoId) : [pago])
+      .sort((a, b) => (a.numCuota || 0) - (b.numCuota || 0));
+    const primera = grupo[0].numCuota || 1;
+    const ultima = grupo[grupo.length - 1].numCuota || primera;
+    const folio = Fmt.folioRecibo(prestamo.folioNum, primera) + (ultima !== primera ? '-' + String(ultima).padStart(2, '0') : '');
+    const saldo = Store.getSaldoDespuesDe(prestamo, grupo);
+    const sumaCuotas = grupo.reduce((s, x) => s + (Number(x.monto) || 0), 0);
+    const sumaPenal = grupo.reduce((s, x) => s + (Number(x.penalizacion) || 0), 0);
+    const sumaCondonada = grupo.reduce((s, x) => s + (Number(x.penalizacionCondonada) || 0), 0);
+    const total = Math.round((sumaCuotas + sumaPenal) * 100) / 100;
+    const comprobante = grupo.map(x => x.comprobanteUrl).find(Boolean);
+    const cuotasTxt = primera === ultima
+      ? 'Cuota ' + primera + ' de ' + prestamo.plazo
+      : 'Cuotas ' + primera + ' a ' + ultima + ' de ' + prestamo.plazo;
+
+    const filasCuotas = grupo.length > 1 || sumaPenal > 0
+      ? grupo.map(x => '  <tr><td>Cuota ' + x.numCuota + (x.diasAtraso > 0 ? ' <span style="color:#C62828;font-weight:400">(' + x.diasAtraso + ' día' + (x.diasAtraso !== 1 ? 's' : '') + ' de atraso)</span>' : '') + '</td><td>' + Fmt.currency(x.monto) + (Number(x.penalizacion) > 0 ? ' + ' + Fmt.currency(x.penalizacion) + ' penalización' : '') + '</td></tr>\n').join('')
+      : '';
 
     const html = '<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta charset="UTF-8"/>\n<title>Recibo ' + folio + '</title>\n'
     + '<style>\n'
@@ -884,39 +1121,43 @@ const PDF = {
     + '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}\n'
     + '.logo{height:36px;width:auto}\n'
     + '.folio{font-size:10px;font-family:monospace;color:#888;text-align:right}\n'
-    + '.amount-box{background:#E8F5E9;border-radius:8px;padding:16px;text-align:center;margin:14px 0}\n'
+    + '.amount-box{background:#E8F5E9;border-radius:8px;padding:16px;text-align:center;margin:14px 0;print-color-adjust:exact;-webkit-print-color-adjust:exact}\n'
     + '.amount-lbl{font-size:9px;color:#2E7D32;font-weight:700;letter-spacing:1.5px;text-transform:uppercase}\n'
     + '.amount-val{font-size:32px;font-weight:700;color:#2E7D32;margin:4px 0}\n'
-    + '.amount-letras{font-size:10px;color:#4CAF50;font-style:italic}\n'
+    + '.amount-letras{font-size:10px;color:#2E7D32;font-style:italic}\n'
     + 'table{width:100%;font-size:11px;border-collapse:collapse}\n'
-    + 'table td{padding:7px 0;border-bottom:0.5px solid #f5f5f5}\n'
-    + 'table td:first-child{color:#888;font-weight:600}\n'
+    + 'table td{padding:7px 0;border-bottom:0.5px solid #f0f0f0;vertical-align:top}\n'
+    + 'table td:first-child{color:#888;font-weight:600;padding-right:8px}\n'
     + 'table td:last-child{text-align:right;color:#1a1a1a}\n'
     + '.saldo-row td{font-size:14px;color:#1A2340;font-weight:700;border-bottom:none;padding-top:12px}\n'
     + '.acreedor{margin-top:18px;text-align:center;padding-top:12px;border-top:0.5px solid #eee}\n'
-    + '.footer{margin-top:14px;font-size:9px;color:#ccc;text-align:center}\n'
+    + '.footer{margin-top:14px;font-size:9px;color:#bbb;text-align:center}\n'
     + '@media print{body{padding:16px} @page{margin:1cm}}\n'
     + '</style>\n</head>\n<body>\n'
     + '<div class="header">\n'
-    + '  <img src="' + BASE_URL + '/ÍCONO.png" alt="Varito" class="logo"/>\n'
+    + '  <img src="' + BASE_URL + '/%C3%8DCONO.png" alt="Varito" class="logo"/>\n'
     + '  <div class="folio"><div style="font-weight:700">' + folio + '</div><div>' + Fmt.date(pago.fecha) + '</div></div>\n'
     + '</div>\n'
     + '<div class="amount-box">\n'
     + '  <div class="amount-lbl">Pago recibido</div>\n'
-    + '  <div class="amount-val">' + Fmt.currency(pago.monto) + '</div>\n'
-    + '  <div class="amount-letras">' + Fmt.importe(pago.monto) + '</div>\n'
+    + '  <div class="amount-val">' + Fmt.currency(total) + '</div>\n'
+    + '  <div class="amount-letras">' + Fmt.importe(total) + '</div>\n'
     + '</div>\n'
     + '<table>\n'
-    + '  <tr><td>Cliente</td><td>' + cliente.nombre + '</td></tr>\n'
+    + '  <tr><td>Cliente</td><td>' + E(cliente.nombre) + '</td></tr>\n'
     + '  <tr><td>Préstamo</td><td>' + Fmt.folioPagare(prestamo.folioNum) + '</td></tr>\n'
-    + '  <tr><td>Fecha</td><td>' + Fmt.date(pago.fecha) + '</td></tr>\n'
-    + '  <tr><td>Método</td><td>' + pago.metodo.charAt(0).toUpperCase() + pago.metodo.slice(1) + '</td></tr>\n'
-    + (pago.folio ? '  <tr><td>Folio</td><td style="font-size:9px;font-family:monospace">' + pago.folio + '</td></tr>\n' : '')
-    + (pago.nota ? '  <tr><td>Nota</td><td>' + pago.nota + '</td></tr>\n' : '')
-    + '  <tr><td>Pago número</td><td>' + pagosCount + ' de ' + prestamo.plazo + '</td></tr>\n'
+    + '  <tr><td>Fecha de pago</td><td>' + Fmt.date(pago.fecha) + '</td></tr>\n'
+    + '  <tr><td>Método</td><td>' + E(Fmt.metodoLabel(pago.metodo)) + '</td></tr>\n'
+    + (pago.folio ? '  <tr><td>Referencia</td><td style="font-family:monospace">' + E(pago.folio) + '</td></tr>\n' : '')
+    + '  <tr><td>Concepto</td><td>' + cuotasTxt + '</td></tr>\n'
+    + filasCuotas
+    + (sumaPenal > 0 ? '  <tr><td>Subtotal cuotas</td><td>' + Fmt.currency(sumaCuotas) + '</td></tr>\n  <tr><td>Penalización por atraso</td><td>' + Fmt.currency(sumaPenal) + '</td></tr>\n' : '')
+    + (sumaCondonada > 0 ? '  <tr><td>Penalización condonada</td><td>' + Fmt.currency(sumaCondonada) + '</td></tr>\n' : '')
+    + (pago.nota ? '  <tr><td>Nota</td><td>' + E(pago.nota) + '</td></tr>\n' : '')
     + '  <tr class="saldo-row"><td>Saldo restante</td><td>' + Fmt.currency(saldo) + '</td></tr>\n'
     + '</table>\n'
-    + (pago.comprobanteUrl ? '<div style="margin-top:12px;text-align:center"><div style="font-size:9px;color:#aaa;margin-bottom:4px">Comprobante adjunto</div><img src="' + pago.comprobanteUrl + '" style="max-width:100%;border-radius:6px;border:0.5px solid #eee"/></div>\n' : '')
+    + (saldo <= 0 ? '<div style="margin-top:10px;text-align:center;font-size:12px;font-weight:700;color:#2E7D32">✓ Préstamo liquidado</div>\n' : '')
+    + (comprobante ? '<div style="margin-top:12px;text-align:center"><div style="font-size:9px;color:#aaa;margin-bottom:4px">Comprobante adjunto</div><img src="' + comprobante + '" style="max-width:100%;border-radius:6px;border:0.5px solid #eee"/></div>\n' : '')
     + '<div class="acreedor">\n'
     + '  <div style="font-size:11px;font-weight:700;color:#1A2340">' + Store.ACREEDORA + '</div>\n'
     + '  <div style="font-size:9px;color:#aaa;margin-top:1px">Acreedora · Varito</div>\n'
@@ -924,10 +1165,8 @@ const PDF = {
     + '<div class="footer">' + folio + ' · Generado el ' + new Date().toLocaleString('es-MX') + '</div>\n'
     + '</body>\n</html>';
 
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => w.print(), 700);
+    const w = PDF.abrirVentana(html);
+    if (w) PDF.imprimirCuandoListo(w);
   },
 };
 </script><script>const Toast = {
@@ -1107,11 +1346,18 @@ const Modal = {
     cliList.className = 'client-list';
 
     if (clientesFiltrados.length === 0) {
+      const vacio = this.filtro === 'atrasado'
+        ? { icon: 'ti-mood-happy', t: 'Nadie tiene atraso', p: 'Todos tus clientes activos van al corriente.' }
+        : this.filtro === 'corriente'
+        ? { icon: 'ti-alert-triangle', t: 'Nadie al corriente', p: 'Revisa el filtro "Con atraso".' }
+        : clientes.length === 0
+        ? { icon: 'ti-users', t: '¡Todo listo, Yaretzi!', p: 'Toca "Nuevo cliente" para registrar tu primer cliente y comenzar.' }
+        : { icon: 'ti-cash', t: 'Sin préstamos activos', p: 'Crea un préstamo desde "Nuevo préstamo".' };
       cliList.innerHTML = `
         <div class="empty-state">
-          <i class="ti ti-users"></i>
-          <h3>¡Todo listo, Yaretzi!</h3>
-          <p>Toca "Nuevo cliente" para registrar tu primer cliente y comenzar.</p>
+          <i class="ti ${vacio.icon}"></i>
+          <h3>${vacio.t}</h3>
+          <p>${vacio.p}</p>
         </div>`;
     } else {
       clientesFiltrados.slice(0, 5).forEach(c => {
@@ -1128,9 +1374,9 @@ const Modal = {
         const row = document.createElement('div');
         row.className = 'client-row';
         row.innerHTML = `
-          <div class="c-avatar ${Fmt.avatarColor(c.nombre)}">${Fmt.initials(c.nombre)}</div>
+          <div class="c-avatar ${Fmt.avatarColor(c.nombre)}">${Fmt.esc(Fmt.initials(c.nombre))}</div>
           <div class="c-info">
-            <div class="c-name">${c.nombre}</div>
+            <div class="c-name">${Fmt.esc(c.nombre)}</div>
             <div class="c-detail">${freq} · ${ps.length} préstamo${ps.length !== 1 ? 's' : ''}</div>
           </div>
           <div class="c-right">
@@ -1162,77 +1408,121 @@ const Modal = {
 };
 </script><script>const Clientes = {
   query: '',
-  render() {
-    const clientes = Store.getClientes();
-    const filtered = clientes.filter(c =>
-      c.nombre.toLowerCase().includes(this.query.toLowerCase()) ||
-      c.telefono.includes(this.query)
-    );
 
+  // Solo se redibuja la lista; el cuadro de búsqueda no se toca, así no se cierra el teclado
+  pintarLista(cont) {
+    const E = Fmt.esc;
+    const q = this.query.trim().toLowerCase();
+    const qDig = q.replace(/\D/g, '');
+    const filtered = Store.getClientes().filter(c =>
+      !q ||
+      String(c.nombre || '').toLowerCase().includes(q) ||
+      (qDig && String(c.telefono || '').includes(qDig))
+    );
+    if (filtered.length === 0) {
+      cont.innerHTML = `
+        <div class="empty-state">
+          <i class="ti ti-user-search"></i>
+          <h3>${q ? 'Sin resultados' : 'Aún no hay clientes'}</h3>
+          <p>${q ? 'Intenta con otro nombre o teléfono' : 'Toca el botón + para registrar al primero'}</p>
+        </div>`;
+      return;
+    }
+    cont.innerHTML = filtered.map(c => {
+      const ps = Store.getPrestamosByCliente(c.id);
+      const activos = ps.filter(p => p.estado === 'activo');
+      const saldo = activos.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0);
+      const hasAtraso = activos.some(p => Store.getTableraAmortizacion(p).some(t => t.estado === 'vencido'));
+      return `
+        <div class="client-row" style="margin-bottom:8px" data-id="${E(c.id)}">
+          <div class="c-avatar ${Fmt.avatarColor(c.nombre)}">${E(Fmt.initials(c.nombre))}</div>
+          <div class="c-info">
+            <div class="c-name">${E(c.nombre)}</div>
+            <div class="c-detail"><i class="ti ti-phone" style="font-size:10px"></i> ${E(c.telefono)}</div>
+          </div>
+          <div class="c-right">
+            ${activos.length > 0
+              ? `<div class="c-amount">${Fmt.currency(saldo)}</div>
+                 <span class="badge ${hasAtraso ? 'badge-late' : 'badge-ok'}">${hasAtraso ? 'Con atraso' : 'Al corriente'}</span>`
+              : `<span class="badge badge-new">${ps.length > 0 ? 'Liquidado' : 'Nuevo'}</span>`}
+          </div>
+        </div>`;
+    }).join('');
+    cont.querySelectorAll('.client-row[data-id]').forEach(row => {
+      row.onclick = () => App.navigate('clienteDetalle', row.dataset.id);
+    });
+  },
+
+  render() {
+    const total = Store.getClientes().length;
     const el = document.createElement('div');
     el.innerHTML = `
       <div class="page-header" style="padding:14px 20px 16px">
-        <button class="back-btn" onclick="App.navigate('dashboard')"><i class="ti ti-arrow-left"></i></button>
+        <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
         <div style="padding-left:36px">
           <h1 style="font-size:20px">Clientes</h1>
-          <p>${clientes.length} registrados</p>
+          <p>${total} registrado${total !== 1 ? 's' : ''}</p>
         </div>
       </div>
       <div class="search-bar">
         <i class="ti ti-search"></i>
-        <input type="text" placeholder="Buscar por nombre o teléfono..." id="search-input" value="${this.query}" />
+        <input type="search" placeholder="Buscar por nombre o teléfono..." id="search-input" autocomplete="off"/>
       </div>
       <div class="scroll-area" style="padding-bottom:80px">
-        <div style="padding:6px 16px 12px">
-          ${filtered.length === 0 ? `
-            <div class="empty-state">
-              <i class="ti ti-user-search"></i>
-              <h3>Sin resultados</h3>
-              <p>Intenta con otro nombre o teléfono</p>
-            </div>
-          ` : filtered.map(c => {
-            const ps = Store.getPrestamosByCliente(c.id);
-            const activos = ps.filter(p => p.estado === 'activo');
-            const saldo = activos.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0);
-            const hasAtraso = activos.some(p => {
-              const tabla = Store.getTableraAmortizacion(p);
-              return tabla.some(t => t.estado === 'vencido');
-            });
-            return `
-              <div class="client-row" style="margin-bottom:8px" onclick="App.navigate('clienteDetalle', '${c.id}')">
-                <div class="c-avatar ${Fmt.avatarColor(c.nombre)}">${Fmt.initials(c.nombre)}</div>
-                <div class="c-info">
-                  <div class="c-name">${c.nombre}</div>
-                  <div class="c-detail"><i class="ti ti-phone" style="font-size:10px"></i> ${c.telefono}</div>
-                </div>
-                <div class="c-right">
-                  ${activos.length > 0
-                    ? `<div class="c-amount">${Fmt.currency(saldo)}</div>
-                       <span class="badge ${hasAtraso ? 'badge-late' : 'badge-ok'}">${hasAtraso ? 'Con atraso' : 'Al corriente'}</span>`
-                    : `<span class="badge badge-new">${ps.length > 0 ? 'Liquidado' : 'Nuevo'}</span>`
-                  }
-                </div>
-              </div>`;
-          }).join('')}
-        </div>
+        <div style="padding:6px 16px 12px" id="lista-clientes"></div>
       </div>
-      <button class="fab" onclick="App.navigate('nuevoCliente')">
-        <i class="ti ti-user-plus"></i>
-      </button>
-    `;
+      <button class="fab" id="fab-nuevo"><i class="ti ti-user-plus"></i></button>`;
 
-    el.querySelector('#search-input').addEventListener('input', (e) => {
+    el.querySelector('#back-btn').onclick = () => App.back('dashboard');
+    el.querySelector('#fab-nuevo').onclick = () => App.navigate('nuevoCliente');
+    const input = el.querySelector('#search-input');
+    input.value = this.query;
+    const lista = el.querySelector('#lista-clientes');
+    this.pintarLista(lista);
+    input.addEventListener('input', (e) => {
       this.query = e.target.value;
-      App.renderView();
+      this.pintarLista(lista);
     });
-
     return el;
+  },
+
+  // Cuando llegan datos nuevos mientras se busca, actualiza solo la lista
+  refrescar() {
+    const lista = document.getElementById('lista-clientes');
+    if (lista) { this.pintarLista(lista); return true; }
+    return false;
   }
 };
 </script><script>const ClienteDetalle = {
+  expandido: {},   // préstamo abierto por cliente (se conserva al volver a dibujar)
+
+  verFoto(src, titulo) {
+    const bd = document.createElement('div');
+    bd.className = 'modal-backdrop';
+    bd.style.cssText += ';display:flex;align-items:center;justify-content:center;padding:16px';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:var(--r-lg);padding:12px;max-width:420px;width:100%;max-height:90vh;overflow:auto';
+    const t = document.createElement('div');
+    t.style.cssText = 'font-size:13px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center';
+    t.textContent = titulo;
+    const x = document.createElement('button');
+    x.innerHTML = '<i class="ti ti-x"></i>';
+    x.style.cssText = 'background:none;border:none;font-size:18px;cursor:pointer';
+    x.onclick = () => bd.remove();
+    t.appendChild(x);
+    const img = document.createElement('img');
+    img.src = src;
+    img.style.cssText = 'width:100%;border-radius:var(--r-md);display:block';
+    box.appendChild(t); box.appendChild(img);
+    bd.appendChild(box);
+    bd.onclick = (e) => { if (e.target === bd) bd.remove(); };
+    document.body.appendChild(bd);
+  },
+
   render(clienteId) {
+    const E = Fmt.esc;
     const cliente = Store.getCliente(clienteId);
-    if (!cliente) return App.navigate('clientes');
+    if (!cliente) return App.navigate('clientes', null, { replace: true });
 
     const prestamos = Store.getPrestamosByCliente(clienteId);
     const activos = prestamos.filter(p => p.estado === 'activo');
@@ -1249,12 +1539,12 @@ const Modal = {
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
         <div class="c-avatar ${Fmt.avatarColor(cliente.nombre)}" style="width:50px;height:50px;font-size:16px;flex-shrink:0">${Fmt.initials(cliente.nombre)}</div>
         <div>
-          <h1>${cliente.nombre}</h1>
-          <p><i class="ti ti-phone" style="font-size:11px"></i> ${cliente.telefono}</p>
+          <h1>${E(cliente.nombre)}</h1>
+          <p><i class="ti ti-phone" style="font-size:11px"></i> ${E(cliente.telefono)}</p>
         </div>
       </div>`;
     el.appendChild(header);
-    el.querySelector('#back-btn').onclick = () => App.navigate('clientes');
+    el.querySelector('#back-btn').onclick = () => App.back('clientes');
 
     // ── Stats ──
     const stats = document.createElement('div');
@@ -1262,7 +1552,7 @@ const Modal = {
     stats.innerHTML = `
       <div class="stat-card"><div class="stat-val">${Fmt.currency(saldoTotal)}</div><div class="stat-lbl">Saldo total</div></div>
       <div class="stat-card"><div class="stat-val">${activos.length}</div><div class="stat-lbl">Activos</div></div>
-      <div class="stat-card"><div class="stat-val">${pagosTotal}</div><div class="stat-lbl">Pagos hechos</div></div>`;
+      <div class="stat-card"><div class="stat-val">${pagosTotal}</div><div class="stat-lbl">Cuotas pagadas</div></div>`;
     el.appendChild(stats);
 
     // ── Body ──
@@ -1298,7 +1588,7 @@ const Modal = {
     infoItems.forEach(item => {
       const box = document.createElement('div');
       box.className = 'info-box';
-      box.innerHTML = `<i class="ti ${item.icon}"></i><span>${item.text}</span>`;
+      box.innerHTML = `<i class="ti ${item.icon}"></i><span>${E(item.text)}</span>`;
       datosBody.appendChild(box);
     });
 
@@ -1307,11 +1597,28 @@ const Modal = {
     docsRow.style.cssText = 'display:flex;gap:8px;margin-top:4px';
     const ineStatus = document.createElement('div');
     ineStatus.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:' + (cliente.fotoIneUrl ? 'var(--success)' : 'var(--ink-soft)');
-    ineStatus.innerHTML = `<i class="ti ti-id" style="font-size:14px"></i> INE ${cliente.fotoIneUrl ? '✓' : 'pendiente'}`;
+    ineStatus.innerHTML = `<i class="ti ti-id" style="font-size:14px"></i> INE ${cliente.fotoIneUrl ? '✓ <u>ver</u>' : 'pendiente'}`;
+    if (cliente.fotoIneUrl) {
+      ineStatus.style.cursor = 'pointer';
+      ineStatus.onclick = () => {
+        ClienteDetalle.verFoto(cliente.fotoIneUrl, 'INE · frente');
+      };
+    }
     const domStatus = document.createElement('div');
     domStatus.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:' + (cliente.fotoDomicilioUrl ? 'var(--success)' : 'var(--ink-soft)');
-    domStatus.innerHTML = `<i class="ti ti-home" style="font-size:14px"></i> Domicilio ${cliente.fotoDomicilioUrl ? '✓' : 'pendiente'}`;
+    domStatus.innerHTML = `<i class="ti ti-home" style="font-size:14px"></i> Domicilio ${cliente.fotoDomicilioUrl ? '✓ <u>ver</u>' : 'pendiente'}`;
+    if (cliente.fotoDomicilioUrl) {
+      domStatus.style.cursor = 'pointer';
+      domStatus.onclick = () => ClienteDetalle.verFoto(cliente.fotoDomicilioUrl, 'Comprobante de domicilio');
+    }
     docsRow.appendChild(ineStatus);
+    if (cliente.fotoIneBackUrl) {
+      const ineBack = document.createElement('div');
+      ineBack.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:var(--success);cursor:pointer';
+      ineBack.innerHTML = '<i class="ti ti-id" style="font-size:14px"></i> Reverso <u>ver</u>';
+      ineBack.onclick = () => ClienteDetalle.verFoto(cliente.fotoIneBackUrl, 'INE · reverso');
+      docsRow.appendChild(ineBack);
+    }
     docsRow.appendChild(domStatus);
     datosBody.appendChild(docsRow);
 
@@ -1340,9 +1647,11 @@ const Modal = {
         ? `Este cliente tiene ${psActivos} préstamo(s) activo(s). Se eliminarán todos sus registros. ¿Continuar?`
         : '¿Eliminar este cliente y todos sus registros?';
       if (!confirm(msg)) return;
-      await Store.deleteCliente(clienteId);
-      Toast.success('Cliente eliminado');
-      App.navigate('clientes');
+      try {
+        await Store.deleteCliente(clienteId);
+        Toast.success('Cliente eliminado');
+        App.navigate('clientes', null, { replace: true });
+      } catch (e) { console.error(e); Toast.error('No se pudo eliminar. Intenta de nuevo.'); }
     });
 
     // ── Préstamos ──
@@ -1353,13 +1662,19 @@ const Modal = {
       empty.innerHTML = `<i class="ti ti-cash"></i><h3>Sin préstamos</h3><p>Crea el primer préstamo para este cliente</p>`;
       body.appendChild(empty);
     } else {
-      let expandedId = prestamos.length === 1 ? prestamos[0].id : null;
+      // Por defecto se abre el préstamo activo más reciente
+      if (!(clienteId in ClienteDetalle.expandido)) {
+        const abierto = prestamos.find(p => p.estado === 'activo') || prestamos[0];
+        ClienteDetalle.expandido[clienteId] = abierto ? abierto.id : null;
+      }
+      let expandedId = ClienteDetalle.expandido[clienteId];
 
       prestamos.forEach(p => {
         const pagosHechos = Store.getPagosCount(p.id);
         const saldo = Store.getSaldoRestante(p.id);
         const tabla = Store.getTableraAmortizacion(p);
         const vencidas = tabla.filter(t => t.estado === 'vencido').length;
+        const penalPendiente = tabla.filter(t => t.estado === 'vencido').reduce((s, t) => s + t.penalizacion, 0);
         const pagosLista = Store.getPagosByPrestamo(p.id);
 
         const secPrestamo = document.createElement('div');
@@ -1412,6 +1727,13 @@ const Modal = {
           <div class="stat-card"><div class="stat-val" style="${saldo > 0 ? 'color:var(--navy)' : 'color:var(--success)'}">${Fmt.currency(saldo)}</div><div class="stat-lbl">Saldo</div></div>`;
         content.appendChild(ms);
 
+        if (penalPendiente > 0 && p.estado === 'activo') {
+          const pa = document.createElement('div');
+          pa.style.cssText = 'margin:0 16px 8px';
+          pa.innerHTML = `<div class="alert-pill"><i class="ti ti-alert-triangle" style="font-size:16px"></i><span>${vencidas} cuota${vencidas !== 1 ? 's' : ''} vencida${vencidas !== 1 ? 's' : ''} · penalización a hoy: <strong>${Fmt.currency(penalPendiente)}</strong></span></div>`;
+          content.appendChild(pa);
+        }
+
         // Botones acción
         const btns = document.createElement('div');
         btns.className = 'btn-row';
@@ -1451,6 +1773,7 @@ const Modal = {
         if (pagosLista.length === 0) {
           hist.innerHTML = `<div style="padding:12px 0;font-size:13px;color:var(--ink-soft);text-align:center">Sin pagos registrados aún</div>`;
         } else {
+          const ultimoPago = pagosLista[pagosLista.length - 1];
           [...pagosLista].reverse().forEach((pg, i) => {
             const row = document.createElement('div');
             row.className = 'pmt-row';
@@ -1462,10 +1785,12 @@ const Modal = {
             info.className = 'pmt-info';
             const dateEl = document.createElement('div');
             dateEl.className = 'pmt-date';
-            dateEl.textContent = Fmt.date(pg.fecha);
+            dateEl.textContent = 'Cuota ' + (pg.numCuota || '—') + ' · ' + Fmt.date(pg.fecha);
             const noteEl = document.createElement('div');
             noteEl.className = 'pmt-note';
-            noteEl.textContent = pg.metodo.charAt(0).toUpperCase()+pg.metodo.slice(1) + (pg.folio ? ' · '+pg.folio : '') + (pg.nota ? ' · '+pg.nota : '');
+            noteEl.textContent = Fmt.metodoLabel(pg.metodo) + (pg.folio ? ' · '+pg.folio : '') + (pg.nota ? ' · '+pg.nota : '')
+              + (Number(pg.penalizacion) > 0 ? ' · incluye ' + Fmt.currency(pg.penalizacion) + ' de penalización' : '')
+              + (Number(pg.penalizacionCondonada) > 0 ? ' · penalización condonada' : '');
             if (pg.comprobanteUrl) {
               const compSpan = document.createElement('span');
               compSpan.style.color = 'var(--green)';
@@ -1477,22 +1802,61 @@ const Modal = {
 
             const amt = document.createElement('div');
             amt.className = 'pmt-amount';
-            amt.textContent = Fmt.currency(pg.monto);
+            amt.textContent = Fmt.currency(Store.totalPago(pg));
 
             const btnRecibo = document.createElement('button');
             btnRecibo.style.cssText = 'background:none;border:none;cursor:pointer;padding:4px';
             btnRecibo.title = 'Ver comprobante';
             btnRecibo.innerHTML = '<i class="ti ti-receipt" style="font-size:16px;color:var(--navy)"></i>';
-            btnRecibo.onclick = () => PDF.generarRecibo(pg, p, cliente, pagosLista.length - i);
+            btnRecibo.onclick = () => PDF.generarRecibo(pg, p, cliente);
 
             row.appendChild(dot);
             row.appendChild(info);
             row.appendChild(amt);
             row.appendChild(btnRecibo);
+
+            // Solo el pago más reciente (o su grupo) se puede eliminar, para corregir errores
+            const esUltimo = pg.id === ultimoPago.id || (pg.grupoId && pg.grupoId === ultimoPago.grupoId);
+            if (esUltimo && pg.id === ultimoPago.id) {
+              const btnDel = document.createElement('button');
+              btnDel.style.cssText = 'background:none;border:none;cursor:pointer;padding:4px';
+              btnDel.title = 'Eliminar este pago';
+              btnDel.innerHTML = '<i class="ti ti-trash" style="font-size:16px;color:var(--danger)"></i>';
+              btnDel.onclick = async () => {
+                const grupo = pg.grupoId ? pagosLista.filter(x => x.grupoId === pg.grupoId) : [pg];
+                const msg = grupo.length > 1
+                  ? '¿Eliminar este pago? Se borrarán las ' + grupo.length + ' cuotas que se registraron juntas (' + Fmt.currency(grupo.reduce((s, x) => s + Store.totalPago(x), 0)) + ').'
+                  : '¿Eliminar el pago de la cuota ' + pg.numCuota + ' por ' + Fmt.currency(Store.totalPago(pg)) + '?';
+                if (!confirm(msg)) return;
+                btnDel.disabled = true;
+                try { await Store.deletePago(pg.id); Toast.success('Pago eliminado'); }
+                catch (e) { console.error(e); Toast.error('No se pudo eliminar'); btnDel.disabled = false; }
+              };
+              row.appendChild(btnDel);
+            }
             hist.appendChild(row);
           });
         }
         content.appendChild(hist);
+
+        // Cancelar préstamo (para préstamos capturados por error)
+        const delWrap = document.createElement('div');
+        delWrap.style.cssText = 'padding:4px 16px 8px;text-align:right';
+        const btnDelP = document.createElement('a');
+        btnDelP.style.cssText = 'font-size:11px;color:var(--danger);cursor:pointer';
+        btnDelP.innerHTML = '<i class="ti ti-trash" style="font-size:12px"></i> Eliminar préstamo';
+        btnDelP.onclick = async () => {
+          const n = pagosLista.length;
+          const msg = '¿Eliminar el préstamo ' + Fmt.folioPagare(p.folioNum) + ' de ' + Fmt.currency(p.monto) + '?'
+            + (n ? '\n\nTambién se borrarán sus ' + n + ' pago' + (n !== 1 ? 's' : '') + ' registrado' + (n !== 1 ? 's' : '') + '.' : '')
+            + '\n\nEsto no se puede deshacer.';
+          if (!confirm(msg)) return;
+          try { await Store.deletePrestamo(p.id); Toast.success('Préstamo eliminado'); }
+          catch (e) { console.error(e); Toast.error('No se pudo eliminar'); }
+        };
+        delWrap.appendChild(btnDelP);
+        content.appendChild(delWrap);
+
         secPrestamo.appendChild(content);
 
         // Toggle collapse
@@ -1503,9 +1867,11 @@ const Modal = {
           if (!isOpen) {
             content.style.display = 'block';
             expandedId = p.id;
+            ClienteDetalle.expandido[clienteId] = p.id;
             chevron.className = 'ti ti-chevron-up';
           } else {
             expandedId = null;
+            ClienteDetalle.expandido[clienteId] = null;
             chevron.className = 'ti ti-chevron-down';
           }
         });
@@ -1535,8 +1901,8 @@ const Modal = {
   render(clienteId) {
     const editing = clienteId ? Store.getCliente(clienteId) : null;
     const title = editing ? 'Editar cliente' : 'Nuevo cliente';
-    const back = editing ? () => App.navigate('clienteDetalle', clienteId) : () => App.navigate('clientes');
-    const e = (f) => editing?.[f] || '';
+    const back = editing ? () => App.back('clienteDetalle', clienteId) : () => App.back('clientes');
+    const e = (f) => Fmt.esc(editing?.[f] || '');
 
     let firmaDataUrl = editing?.firmaClienteUrl || editing?.firmaUrl || null;
     let ineUrl = editing?.fotoIneUrl || null;
@@ -1681,11 +2047,11 @@ const Modal = {
       if (getUrl()) { img.src = getUrl(); prev.style.display = 'block'; zone.style.display = 'none'; }
       file.addEventListener('change', ev => {
         const f = ev.target.files[0]; if (!f) return;
-        const reader = new FileReader();
-        reader.onload = e => { setUrl(e.target.result); img.src = e.target.result; prev.style.display='block'; zone.style.display='none'; };
-        reader.readAsDataURL(f);
+        leerImagen(f, 1200, 0.72).then(url => {
+          setUrl(url); img.src = url; prev.style.display='block'; zone.style.display='none';
+        }).catch(() => Toast.error('No se pudo leer la imagen'));
       });
-      rm.onclick = () => { setUrl(null); prev.style.display='none'; zone.style.display='block'; };
+      rm.onclick = () => { setUrl(null); file.value=''; prev.style.display='none'; zone.style.display='block'; };
     };
 
     setupPhoto('file-ine','zone-ine','prev-ine','img-ine','rm-ine', ()=>ineUrl, v=>ineUrl=v);
@@ -1766,7 +2132,7 @@ const Modal = {
     // ── Save ──
     saveBtn.addEventListener('click', async () => {
       const nombre    = el.querySelector('#nombre').value.trim();
-      const telefono  = el.querySelector('#telefono').value.trim();
+      const telefono  = el.querySelector('#telefono').value.replace(/\D/g, '');
       const fechaNac  = el.querySelector('#fechaNacimiento').value;
       const calle     = el.querySelector('#calle').value.trim();
       const numExt    = el.querySelector('#numExt').value.trim();
@@ -1777,6 +2143,7 @@ const Modal = {
       const refTel    = el.querySelector('#refTelefono').value.trim();
 
       if (!nombre || !telefono || !fechaNac) { Toast.error('Nombre, teléfono y fecha de nacimiento son obligatorios'); return; }
+      if (!/^\d{10}$/.test(telefono)) { Toast.error('El teléfono debe tener 10 dígitos'); return; }
       if (!calle || !numExt || !colonia || !ciudad) { Toast.error('Completa el domicilio'); return; }
       if (!refNombre || !refPar || !refTel) { Toast.error('Completa la referencia personal'); return; }
 
@@ -1799,14 +2166,15 @@ const Modal = {
         if (editing) {
           await Store.updateCliente(clienteId, data);
           Toast.success('Cliente actualizado');
-          App.navigate('clienteDetalle', clienteId);
+          App.navigate('clienteDetalle', clienteId, { replace: true });
         } else {
           const c = await Store.addCliente(data);
           Toast.success('Cliente registrado');
-          App.navigate('clienteDetalle', c.id);
+          App.navigate('clienteDetalle', c.id, { replace: true });
         }
       } catch(err) {
-        Toast.error('Error al guardar');
+        console.error(err);
+        Toast.error('Error al guardar. Intenta de nuevo.');
         saveBtn.disabled = false;
         saveBtn.innerHTML = `<i class="ti ti-check"></i> ${editing ? 'Guardar cambios' : 'Registrar cliente'}`;
       }
@@ -1828,7 +2196,7 @@ const Modal = {
       <div style="padding-left:36px"><h1>Nuevo préstamo</h1><p>Configura el crédito</p></div>`;
     el.appendChild(header);
     el.querySelector('#back-btn').onclick = () =>
-      preClienteId ? App.navigate('clienteDetalle', preClienteId) : App.navigate('clientes');
+      preClienteId ? App.back('clienteDetalle', preClienteId) : App.back('dashboard');
 
     const body = document.createElement('div');
     body.className = 'form-body';
@@ -1841,7 +2209,7 @@ const Modal = {
       <label>Cliente *</label>
       <select id="cliente-sel">
         <option value="">— Selecciona cliente —</option>
-        ${clientes.map(c => `<option value="${c.id}" ${c.id === preClienteId ? 'selected' : ''}>${c.nombre}</option>`).join('')}
+        ${[...clientes].sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es')).map(c => `<option value="${Fmt.esc(c.id)}" ${c.id === preClienteId ? 'selected' : ''}>${Fmt.esc(c.nombre)}</option>`).join('')}
       </select>
       <span class="field-hint" id="limite-hint" style="color:var(--green)"></span>`;
     body.appendChild(fCliente);
@@ -1941,14 +2309,6 @@ const Modal = {
     let frecuencia = 'semanal';
     let excepcionAutorizada = false;
 
-    const getInteresPorPlazo = (plazo, frec) => {
-      if (frec === 'semanal') {
-        if (plazo <= 4) return 30;
-        if (plazo <= 8) return 40;
-        return 50;
-      }
-      return getInteresPorQuincenas(plazo);
-    };
 
     const setExcepcion = (activa) => {
       excepcionAutorizada = activa;
@@ -2091,23 +2451,21 @@ const Modal = {
       el.querySelector('#prev-capital').textContent = Fmt.currency(monto);
       el.querySelector('#prev-interes').textContent = `${Fmt.currency(interesTotal)} (${interes}%)`;
       el.querySelector('#prev-pagos').textContent = `${numPagos} pagos ${frecLabel}es`;
+      const cuotasCalc = calcCuotas(fechaInicio, total, cuota, numPagos, frecuencia);
+      const ultima = cuotasCalc[cuotasCalc.length - 1].monto;
       el.querySelector('#prev-total').textContent = Fmt.currency(total);
       el.querySelector('#prev-cuota-lbl').textContent = `Pago ${frecLabel}`;
-      el.querySelector('#prev-cuota').textContent = Fmt.currency(cuota);
+      el.querySelector('#prev-cuota').textContent = Fmt.currency(cuota) + (ultima !== cuota ? ` (última ${Fmt.currency(ultima)})` : '');
       preview.style.display = 'block';
 
       // Tabla
       const tbody = el.querySelector('#tabla-body');
       tbody.innerHTML = '';
-      let saldo = total;
-      for (let i = 1; i <= numPagos; i++) {
-        const fecha = new Date(fechaInicio + 'T00:00:00');
-        fecha.setDate(fecha.getDate() + dias * i);
-        saldo = Math.max(0, Math.round((saldo - cuota) * 100) / 100);
+      cuotasCalc.forEach(c => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${i}</td><td>${Fmt.date(fecha.toISOString().split('T')[0])}</td><td>${Fmt.currency(cuota)}</td><td>${Fmt.currency(capitalPorCuota)}</td><td>${Fmt.currency(interesPorCuota)}</td>`;
+        tr.innerHTML = `<td>${c.num}</td><td>${Fmt.date(c.fecha)}</td><td>${Fmt.currency(c.monto)}</td><td>${Fmt.currency(capitalPorCuota)}</td><td>${Fmt.currency(interesPorCuota)}</td>`;
         tbody.appendChild(tr);
-      }
+      });
       tablaWrap.style.display = 'block';
       saveBtn.disabled = !clienteId;
     }
@@ -2118,7 +2476,7 @@ const Modal = {
       const fechaInicio = el.querySelector('#fechaInicio').value;
       const cliente = Store.getCliente(clienteId);
 
-      if (!clienteId || !monto || !plazoSeleccionado) {
+      if (!clienteId || !monto || !plazoSeleccionado || !fechaInicio) {
         Toast.error('Completa todos los campos');
         return;
       }
@@ -2155,9 +2513,11 @@ const Modal = {
           limiteCreditoAlRegistrar: limite,
         });
         Toast.success('Préstamo registrado');
-        App.navigate('clienteDetalle', clienteId);
+        delete ClienteDetalle.expandido[clienteId];
+        App.navigate('clienteDetalle', clienteId, { replace: true });
       } catch(e) {
-        Toast.error('Error al guardar');
+        console.error(e);
+        Toast.error('Error al guardar. Intenta de nuevo.');
         saveBtn.disabled = false;
         saveBtn.innerHTML = '<i class="ti ti-cash"></i> Registrar préstamo';
       }
@@ -2180,21 +2540,24 @@ const Modal = {
 
   render(prestamoId) {
     const prestamo = Store.getPrestamo(prestamoId);
-    if (!prestamo) return App.navigate('clientes');
+    if (!prestamo) return App.navigate('clientes', null, { replace: true });
     const cliente = Store.getCliente(prestamo.clienteId);
-    if (!cliente) return App.navigate('clientes');
-
-    const saldo = Store.getSaldoRestante(prestamoId);
-    const pagosHechos = Store.getPagosCount(prestamoId);
-    const numCuota = pagosHechos + 1;
+    if (!cliente) return App.navigate('clientes', null, { replace: true });
+    const E = Fmt.esc;
 
     const tabla = Store.getTableraAmortizacion(prestamo);
-    const vencidas = tabla.filter(t => t.estado === 'vencido');
-    const penalizacionTotal = vencidas.reduce((s, c) => s + Store.getPenalizacion(prestamo, c), 0);
+    const pendientes = tabla.filter(c => c.estado !== 'pagado');
+    if (pendientes.length === 0) {
+      Toast.show('Este préstamo ya no tiene cuotas pendientes');
+      return App.navigate('clienteDetalle', prestamo.clienteId, { replace: true });
+    }
+    const saldo = Store.getSaldoRestante(prestamoId);
 
     let metodo = 'transferencia';
     let comprobanteDataUrl = null;
     let notifWhatsApp = true;
+    let numCuotas = 1;
+    let condonar = false;
 
     const el = document.createElement('div');
 
@@ -2206,96 +2569,76 @@ const Modal = {
       <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
       <div style="padding-left:36px">
         <h1>Registrar pago</h1>
-        <p>${cliente.nombre} · Cuota ${numCuota} de ${prestamo.plazo}</p>
+        <p>${E(cliente.nombre)} · ${Fmt.folioPagare(prestamo.folioNum)}</p>
       </div>`;
     el.appendChild(header);
-    el.querySelector('#back-btn').onclick = () => App.navigate('clienteDetalle', prestamo.clienteId);
+    el.querySelector('#back-btn').onclick = () => App.back('clienteDetalle', prestamo.clienteId);
 
-    // ── Scroll body ──
     const body = document.createElement('div');
     body.style.cssText = 'padding-bottom:80px;';
 
-    // Monto card
-    const montoCard = document.createElement('div');
-    montoCard.style.cssText = 'margin:12px 16px;background:var(--success-light);border-radius:var(--r-lg);padding:14px;display:flex;justify-content:space-between;align-items:center';
-    montoCard.innerHTML = `
-      <div>
-        <div style="font-size:11px;color:var(--success);font-weight:600;letter-spacing:0.5px">MONTO DE LA CUOTA</div>
-        <div style="font-size:28px;font-weight:700;color:var(--success)">${Fmt.currency(prestamo.pagoCuota)}</div>
+    // ── Cuántas cuotas paga ──
+    const selWrap = document.createElement('div');
+    selWrap.className = 'form-body';
+    selWrap.style.paddingBottom = '0';
+    const opciones = pendientes.map((c, i) => i + 1);
+    selWrap.innerHTML = `
+      <div class="field">
+        <label>Cuotas que paga</label>
+        <div class="method-row" id="cuotas-row" style="flex-wrap:wrap">
+          ${opciones.map(n => `<div class="method-chip ${n === 1 ? 'active' : ''}" data-n="${n}" style="flex:0 0 auto;min-width:52px">${n === pendientes.length && n > 1 ? 'Todas (' + n + ')' : n}</div>`).join('')}
+        </div>
+        <span class="field-hint" style="font-size:11px;color:var(--ink-soft)">Siempre se pagan cuotas completas, en orden.</span>
       </div>
-      <div style="text-align:right">
-        <div style="font-size:11px;color:var(--success)">Saldo restante</div>
-        <div style="font-size:15px;font-weight:700;color:var(--success)">${Fmt.currency(saldo)}</div>
+      <div class="field">
+        <label>Fecha de pago</label>
+        <input type="date" id="fecha" value="${Fmt.today()}" max="${Fmt.today()}"/>
       </div>`;
-    body.appendChild(montoCard);
+    body.appendChild(selWrap);
 
-    // Penalización si hay
-    if (penalizacionTotal > 0) {
-      const penal = document.createElement('div');
-      penal.style.cssText = 'margin:0 16px 8px';
-      penal.innerHTML = `
-        <div class="alert-pill">
-          <i class="ti ti-alert-triangle" style="font-size:16px"></i>
-          <span>Penalización acumulada: <strong>${Fmt.currency(penalizacionTotal)}</strong> (${vencidas.length} cuota${vencidas.length>1?'s':''} vencida${vencidas.length>1?'s':''})</span>
-        </div>`;
-      body.appendChild(penal);
-    }
+    // ── Desglose ──
+    const resumen = document.createElement('div');
+    resumen.style.cssText = 'margin:12px 16px;background:var(--success-light);border-radius:var(--r-lg);padding:14px';
+    body.appendChild(resumen);
+
+    // Condonar penalización (solo aparece si hay penalización)
+    const condonarWrap = document.createElement('div');
+    condonarWrap.className = 'toggle-wrap';
+    condonarWrap.style.display = 'none';
+    condonarWrap.innerHTML = `
+      <span class="toggle-label"><i class="ti ti-discount" style="font-size:16px;vertical-align:-3px;color:var(--warn)"></i> Condonar penalización</span>
+      <button class="toggle" id="condonar-toggle"><div class="toggle-thumb"></div></button>`;
+    body.appendChild(condonarWrap);
 
     // ── Formulario ──
     const form = document.createElement('div');
     form.className = 'form-body';
-
-    // Fecha
-    const fieldFecha = document.createElement('div');
-    fieldFecha.className = 'field';
-    fieldFecha.innerHTML = `<label>Fecha de pago</label><input type="date" id="fecha" value="${Fmt.today()}"/>`;
-    form.appendChild(fieldFecha);
-
-    // Método
-    const fieldMetodo = document.createElement('div');
-    fieldMetodo.className = 'field';
-    fieldMetodo.innerHTML = `
-      <label>Método de pago</label>
-      <div class="method-row" id="method-row">
-        <div class="method-chip active" data-met="transferencia"><i class="ti ti-building-bank" style="font-size:13px"></i> Transferencia</div>
-        <div class="method-chip" data-met="efectivo"><i class="ti ti-cash" style="font-size:13px"></i> Efectivo</div>
-        <div class="method-chip" data-met="codi"><i class="ti ti-device-mobile" style="font-size:13px"></i> CoDi</div>
-      </div>`;
-    form.appendChild(fieldMetodo);
-
-    // Folio
-    const fieldFolio = document.createElement('div');
-    fieldFolio.className = 'field';
-    fieldFolio.id = 'folio-field';
-    fieldFolio.innerHTML = `<label>Folio / referencia</label><input type="text" id="folio" placeholder="Número de operación"/>`;
-    form.appendChild(fieldFolio);
-
-    // Comprobante
-    const fieldComp = document.createElement('div');
-    fieldComp.className = 'field';
-    fieldComp.innerHTML = `
-      <label>Comprobante <span style="font-size:10px;color:var(--ink-soft);font-weight:400;text-transform:none">— se adjunta al recibo y WhatsApp</span></label>
-      <div class="photo-zone" id="photo-zone">
-        <i class="ti ti-camera"></i>
-        <div class="pz-label">Fotografiar o adjuntar comprobante</div>
-        <div class="pz-sub">Recomendado para tu respaldo</div>
-        <input type="file" id="comp-file" accept="image/*"/>
+    form.innerHTML = `
+      <div class="field">
+        <label>Método de pago</label>
+        <div class="method-row" id="method-row">
+          <div class="method-chip active" data-met="transferencia"><i class="ti ti-building-bank" style="font-size:13px"></i> Transferencia</div>
+          <div class="method-chip" data-met="efectivo"><i class="ti ti-cash" style="font-size:13px"></i> Efectivo</div>
+          <div class="method-chip" data-met="codi"><i class="ti ti-device-mobile" style="font-size:13px"></i> CoDi</div>
+        </div>
       </div>
-      <div id="comp-preview" style="display:none" class="photo-preview-box">
-        <img id="comp-img" src="" alt="Comprobante"/>
-        <button class="photo-remove" id="remove-comp"><i class="ti ti-x"></i></button>
-      </div>`;
-    form.appendChild(fieldComp);
-
-    // Nota
-    const fieldNota = document.createElement('div');
-    fieldNota.className = 'field';
-    fieldNota.innerHTML = `<label>Nota (opcional)</label><textarea id="nota" placeholder="Ej: pago en mano, abono parcial..."></textarea>`;
-    form.appendChild(fieldNota);
-
+      <div class="field" id="folio-field"><label>Folio / referencia</label><input type="text" id="folio" placeholder="Número de operación"/></div>
+      <div class="field">
+        <label>Comprobante <span style="font-size:10px;color:var(--ink-soft);font-weight:400;text-transform:none">— se adjunta al recibo</span></label>
+        <div class="photo-zone" id="photo-zone">
+          <i class="ti ti-camera"></i>
+          <div class="pz-label">Fotografiar o adjuntar comprobante</div>
+          <div class="pz-sub">Recomendado para tu respaldo</div>
+          <input type="file" id="comp-file" accept="image/*"/>
+        </div>
+        <div id="comp-preview" style="display:none" class="photo-preview-box">
+          <img id="comp-img" src="" alt="Comprobante"/>
+          <button class="photo-remove" id="remove-comp"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+      <div class="field"><label>Nota (opcional)</label><textarea id="nota" placeholder="Ej: pago en mano"></textarea></div>`;
     body.appendChild(form);
 
-    // WhatsApp toggle
     const toggle = document.createElement('div');
     toggle.className = 'toggle-wrap';
     toggle.innerHTML = `
@@ -2303,20 +2646,69 @@ const Modal = {
       <button class="toggle on" id="notif-toggle"><div class="toggle-thumb"></div></button>`;
     body.appendChild(toggle);
 
-    // Botones
     const btns = document.createElement('div');
     btns.style.cssText = 'padding:16px;display:flex;flex-direction:column;gap:8px';
     btns.innerHTML = `
       <button class="btn btn-success" id="save-btn"><i class="ti ti-check"></i> Confirmar y guardar pago</button>
       <button class="btn btn-secondary" id="cancel-btn">Cancelar</button>`;
     body.appendChild(btns);
-
     el.appendChild(body);
 
-    // ── Event listeners ──
-    el.querySelector('#cancel-btn').onclick = () => App.navigate('clienteDetalle', prestamo.clienteId);
+    // ── Cálculo ──
+    const calcular = () => {
+      const fecha = el.querySelector('#fecha').value || Fmt.today();
+      const cuotas = pendientes.slice(0, numCuotas).map(c => {
+        const dias = Math.max(0, diasEntre(c.fecha, fecha));
+        return { ...c, diasPago: dias, penalPago: Store.penalizacionPorDias(prestamo, dias) };
+      });
+      const sumaCuotas = cuotas.reduce((s, c) => s + c.monto, 0);
+      const sumaPenal = cuotas.reduce((s, c) => s + c.penalPago, 0);
+      return { fecha, cuotas, sumaCuotas, sumaPenal, total: Math.round((sumaCuotas + (condonar ? 0 : sumaPenal)) * 100) / 100 };
+    };
 
-    // Método chips
+    const pintar = () => {
+      const r = calcular();
+      condonarWrap.style.display = r.sumaPenal > 0 ? 'flex' : 'none';
+      const filas = r.cuotas.map(c => `
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink-mid);padding:3px 0">
+          <span>Cuota ${c.num} · ${Fmt.dateShort(c.fecha)}${c.diasPago > 0 ? ` <span style="color:var(--danger)">· ${c.diasPago} día${c.diasPago !== 1 ? 's' : ''} tarde</span>` : ''}</span>
+          <span>${Fmt.currency(c.monto)}${c.penalPago > 0 ? ` <span style="color:var(--danger)">+ ${Fmt.currency(c.penalPago)}</span>` : ''}</span>
+        </div>`).join('');
+      resumen.innerHTML = `
+        ${filas}
+        ${r.sumaPenal > 0 ? `
+          <div style="height:0.5px;background:rgba(46,125,50,0.25);margin:6px 0"></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink-mid)"><span>Cuotas</span><span>${Fmt.currency(r.sumaCuotas)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:${condonar ? 'var(--ink-soft)' : 'var(--danger)'}"><span>Penalización (${Store.PENALIZACION_DIARIA}% del capital por día)</span><span style="${condonar ? 'text-decoration:line-through' : ''}">${Fmt.currency(r.sumaPenal)}</span></div>` : ''}
+        <div style="height:0.5px;background:rgba(46,125,50,0.25);margin:8px 0"></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end">
+          <div>
+            <div style="font-size:11px;color:var(--success);font-weight:600;letter-spacing:0.5px">TOTAL A COBRAR</div>
+            <div style="font-size:28px;font-weight:700;color:var(--success)">${Fmt.currency(r.total)}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:var(--success)">Saldo después</div>
+            <div style="font-size:15px;font-weight:700;color:var(--success)">${Fmt.currency(Math.max(0, saldo - r.sumaCuotas))}</div>
+          </div>
+        </div>`;
+    };
+
+    // ── Eventos ──
+    el.querySelector('#cancel-btn').onclick = () => App.back('clienteDetalle', prestamo.clienteId);
+
+    el.querySelectorAll('#cuotas-row .method-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        numCuotas = Number(chip.dataset.n);
+        el.querySelectorAll('#cuotas-row .method-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        pintar();
+      });
+    });
+    el.querySelector('#fecha').addEventListener('change', pintar);
+
+    const condBtn = el.querySelector('#condonar-toggle');
+    condBtn.onclick = () => { condonar = !condonar; condBtn.classList.toggle('on', condonar); pintar(); };
+
     el.querySelectorAll('.method-chip[data-met]').forEach(chip => {
       chip.addEventListener('click', () => {
         metodo = chip.dataset.met;
@@ -2326,98 +2718,96 @@ const Modal = {
       });
     });
 
-    // Foto comprobante
     const photoZone = el.querySelector('#photo-zone');
     const compFile  = el.querySelector('#comp-file');
     const compPrev  = el.querySelector('#comp-preview');
     const compImg   = el.querySelector('#comp-img');
-
     photoZone.onclick = () => compFile.click();
-    compFile.addEventListener('change', e => {
+    compFile.addEventListener('change', async e => {
       const file = e.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = ev => {
-        comprobanteDataUrl = ev.target.result;
+      try {
+        comprobanteDataUrl = await leerImagen(file, 1200, 0.7);
         compImg.src = comprobanteDataUrl;
         compPrev.style.display = 'block';
         photoZone.style.display = 'none';
-      };
-      reader.readAsDataURL(file);
+      } catch (err) { Toast.error('No se pudo leer la imagen'); }
     });
     el.querySelector('#remove-comp').onclick = () => {
       comprobanteDataUrl = null;
+      compFile.value = '';
       compPrev.style.display = 'none';
       photoZone.style.display = 'block';
     };
 
-    // Toggle WhatsApp
     const notifBtn = el.querySelector('#notif-toggle');
-    notifBtn.onclick = () => {
-      notifWhatsApp = !notifWhatsApp;
-      notifBtn.classList.toggle('on', notifWhatsApp);
-    };
+    notifBtn.onclick = () => { notifWhatsApp = !notifWhatsApp; notifBtn.classList.toggle('on', notifWhatsApp); };
 
-    // Guardar pago
-    el.querySelector('#save-btn').addEventListener('click', async () => {
-      const fecha = el.querySelector('#fecha').value;
-      if (!fecha) { Toast.error('Selecciona la fecha del pago'); return; }
-      const folio = el.querySelector('#folio').value.trim();
+    // ── Guardar ──
+    const saveBtn = el.querySelector('#save-btn');
+    saveBtn.addEventListener('click', async () => {
+      const r = calcular();
+      if (!el.querySelector('#fecha').value) { Toast.error('Selecciona la fecha del pago'); return; }
+      if (r.fecha > Fmt.today()) { Toast.error('La fecha de pago no puede ser futura'); return; }
+      const folio = metodo === 'efectivo' ? '' : el.querySelector('#folio').value.trim();
       const nota  = el.querySelector('#nota').value.trim();
 
-      const saveBtn = el.querySelector('#save-btn');
       saveBtn.disabled = true;
       saveBtn.innerHTML = '<i class="ti ti-loader"></i> Guardando...';
 
+      // La ventana de WhatsApp se abre antes de esperar a Firebase para que el navegador no la bloquee
+      const wa = notifWhatsApp && cliente.telefono ? window.open('', '_blank') : null;
+
       try {
-        await Store.addPago({
-          prestamoId,
-          monto: prestamo.pagoCuota,
-          fecha, metodo, folio, nota,
+        const nuevos = await Store.registrarPagos(prestamoId, r.cuotas.map(c => c.num), {
+          fecha: r.fecha, metodo, folio, nota,
           comprobanteUrl: comprobanteDataUrl,
-          numCuota,
+          condonarPenalizacion: condonar,
         });
+        const nuevoSaldo = Math.max(0, Math.round((saldo - r.sumaCuotas) * 100) / 100);
+        Toast.success(nuevos.length > 1 ? nuevos.length + ' cuotas registradas' : 'Pago registrado correctamente');
 
-        const nuevoSaldo = Store.getSaldoRestante(prestamoId);
-        Toast.success('Pago registrado correctamente');
-
-        if (notifWhatsApp && cliente.telefono) {
-          const nombre = cliente.nombre.split(' ')[0];
-          const metodoLabel = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', codi: 'CoDi' }[metodo] || metodo;
-          const folioTexto = folio ? '\nReferencia: ' + folio : '';
-          const pagosAhora = Store.getPagosCount(prestamoId);
+        if (wa) {
+          const nombre = String(cliente.nombre).split(' ')[0];
+          const cuotasTxt = nuevos.length === 1
+            ? 'Cuota ' + nuevos[0].numCuota + ' de ' + prestamo.plazo
+            : 'Cuotas ' + nuevos[0].numCuota + ' a ' + nuevos[nuevos.length - 1].numCuota + ' de ' + prestamo.plazo;
+          const penal = condonar ? 0 : r.sumaPenal;
           const saldoTexto = nuevoSaldo > 0
-            ? 'Tu saldo restante es de *' + Fmt.currency(nuevoSaldo) + '* (' + pagosAhora + ' de ' + prestamo.plazo + ' pagos completados).'
-            : '✅ *¡Felicidades! Tu préstamo ha sido liquidado en su totalidad.* Muchas gracias por tu puntualidad.';
-
+            ? 'Tu saldo restante es de *' + Fmt.currency(nuevoSaldo) + '*.'
+            : '✅ *¡Felicidades! Tu préstamo ha sido liquidado en su totalidad.* Muchas gracias.';
           const msg = 'Hola *' + nombre + '* 👋\n\nTe confirmamos tu pago recibido 🪙\n\n'
-            + '✅ *Monto:* ' + Fmt.currency(prestamo.pagoCuota) + '\n'
-            + '📅 *Fecha:* ' + Fmt.date(fecha) + '\n'
-            + '💳 *Método:* ' + metodoLabel + folioTexto + '\n\n'
+            + '✅ *Monto:* ' + Fmt.currency(r.sumaCuotas + penal) + '\n'
+            + '🧾 *Concepto:* ' + cuotasTxt + '\n'
+            + (penal > 0 ? '⚠️ *Incluye penalización por atraso:* ' + Fmt.currency(penal) + '\n' : '')
+            + '📅 *Fecha:* ' + Fmt.date(r.fecha) + '\n'
+            + '💳 *Método:* ' + Fmt.metodoLabel(metodo) + (folio ? '\nReferencia: ' + folio : '') + '\n\n'
             + saldoTexto + '\n\n'
-            + (comprobanteDataUrl ? '🧾 Adjuntamos tu comprobante de pago.\n\n' : '')
             + 'Cualquier duda, con gusto te atendemos 😊\n\n'
             + '*Varito* · Tu dinerito, siempre a la mano';
-
-          setTimeout(() => window.open('https://wa.me/52' + cliente.telefono + '?text=' + encodeURIComponent(msg), '_blank'), 400);
+          wa.location.href = 'https://wa.me/52' + String(cliente.telefono).replace(/\D/g, '') + '?text=' + encodeURIComponent(msg);
         }
 
-        App.navigate('clienteDetalle', prestamo.clienteId);
-      } catch(err) {
+        App.navigate('clienteDetalle', prestamo.clienteId, { replace: true });
+      } catch (err) {
         console.error(err);
+        if (wa) wa.close();
         Toast.error('Error al guardar. Intenta de nuevo.');
         saveBtn.disabled = false;
         saveBtn.innerHTML = '<i class="ti ti-check"></i> Confirmar y guardar pago';
       }
     });
 
+    pintar();
     return el;
   }
 };
 </script><script>const Documentos = {
   render(prestamoId) {
     const prestamo = Store.getPrestamo(prestamoId);
-    if (!prestamo) return App.navigate('clientes');
+    if (!prestamo) return App.navigate('clientes', null, { replace: true });
+    const clienteDoc = Store.getCliente(prestamo.clienteId);
+    if (!clienteDoc) return App.navigate('clientes', null, { replace: true });
     const cliente = Store.getCliente(prestamo.clienteId);
     const tabla = Store.getTableraAmortizacion(prestamo);
 
@@ -2427,7 +2817,7 @@ const Modal = {
         <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
         <div style="padding-left:36px">
           <h1>Tabla de pagos</h1>
-          <p>${cliente.nombre} · ${Fmt.folioPagare(prestamo.folioNum)}</p>
+          <p>${Fmt.esc(cliente.nombre)} · ${Fmt.folioPagare(prestamo.folioNum)}</p>
         </div>
       </div>
 
@@ -2456,10 +2846,11 @@ const Modal = {
               <tbody>
                 ${tabla.map(c => {
                   const cls = c.estado === 'pagado' ? 'paid' : c.estado === 'vencido' ? 'late' : c.estado === 'hoy' ? 'current' : '';
+                  const pg = c.pagoHecho;
                   const badge = c.estado === 'pagado'
-                    ? `<span class="badge badge-ok">Pagado</span>`
+                    ? `<span class="badge badge-ok">Pagado ${Fmt.dateShort(pg.fecha)}</span>${Number(pg.penalizacion) > 0 ? `<div style="font-size:10px;color:var(--danger);margin-top:2px">+${Fmt.currency(pg.penalizacion)} penal.</div>` : ''}`
                     : c.estado === 'vencido'
-                    ? `<span class="badge badge-late">Vencido</span>`
+                    ? `<span class="badge badge-late">Vencido · ${c.diasAtraso} d</span><div style="font-size:10px;color:var(--danger);margin-top:2px">+${Fmt.currency(c.penalizacion)} penal.</div>`
                     : c.estado === 'hoy'
                     ? `<span class="badge badge-warn">Hoy</span>`
                     : `<span class="badge" style="background:var(--sand-mid);color:var(--ink-soft)">Pendiente</span>`;
@@ -2487,7 +2878,7 @@ const Modal = {
       </div>
     `;
 
-    el.querySelector('#back-btn').onclick = () => App.navigate('clienteDetalle', prestamo.clienteId);
+    el.querySelector('#back-btn').onclick = () => App.back('clienteDetalle', prestamo.clienteId);
     return el;
   }
 };
@@ -2502,13 +2893,16 @@ const Modal = {
 
     // Saldos
     const carteraTotal = activos.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0);
-    const cobrado = pagos.reduce((s, p) => s + p.monto, 0);
+    const cobrado = pagos.reduce((s, p) => s + Store.totalPago(p), 0);
+    const penalCobrada = pagos.reduce((s, p) => s + (Number(p.penalizacion) || 0), 0);
+    const penalPorCobrar = prestamos.filter(p => p.estado === 'activo').reduce((s, p) =>
+      s + Store.getTableraAmortizacion(p).filter(t => t.estado === 'vencido').reduce((a, t) => a + t.penalizacion, 0), 0);
 
     // Ganancias: interés cobrado ya = pagos recibidos - capital proporcionalmente pagado
     // Forma simple: por cada préstamo, calcular cuánto del cobrado es interés
     const gananciaCobrada = prestamos.reduce((sum, p) => {
       const pagosP = pagos.filter(pg => pg.prestamoId === p.id);
-      const totalPagado = pagosP.reduce((s, pg) => s + pg.monto, 0);
+      const totalPagado = pagosP.reduce((s, pg) => s + (Number(pg.monto) || 0), 0);
       if (p.totalConInteres === 0) return sum;
       const proporcionInteres = (p.totalConInteres - p.monto) / p.totalConInteres;
       return sum + (totalPagado * proporcionInteres);
@@ -2526,14 +2920,15 @@ const Modal = {
 
     const hoy = Fmt.today();
     const pagosHoy = pagos.filter(p => p.fecha === hoy);
-    const cobradoHoy = pagosHoy.reduce((s, p) => s + p.monto, 0);
+    const cobradoHoy = pagosHoy.reduce((s, p) => s + Store.totalPago(p), 0);
 
-    const ultimosPagos = [...pagos].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 6);
+    const ultimosPagos = [...pagos].sort((a, b) =>
+      String(b.fecha).localeCompare(String(a.fecha)) || String(b.registradoEn || '').localeCompare(String(a.registradoEn || ''))).slice(0, 8);
 
     const el = document.createElement('div');
     el.innerHTML = `
       <div class="page-header" style="padding:14px 20px 16px">
-        <button class="back-btn" onclick="App.navigate('dashboard')"><i class="ti ti-arrow-left"></i></button>
+        <button class="back-btn" onclick="App.back('dashboard')"><i class="ti ti-arrow-left"></i></button>
         <div style="padding-left:36px">
           <h1>Reportes</h1>
           <p>Resumen de tu cartera</p>
@@ -2590,6 +2985,18 @@ const Modal = {
           </div>
         </div>
 
+        <div style="padding:14px 16px 0;font-size:11px;font-weight:700;color:var(--gold-deep);letter-spacing:1px">PENALIZACIONES</div>
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-val" style="color:var(--success)">${Fmt.currency(penalCobrada)}</div>
+            <div class="stat-lbl">Cobradas</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" style="color:var(--danger)">${Fmt.currency(penalPorCobrar)}</div>
+            <div class="stat-lbl">Acumuladas a hoy</div>
+          </div>
+        </div>
+
         ${cobradoHoy > 0 ? `
         <div style="margin:0 16px 8px">
           <div class="alert-pill" style="background:var(--success-light);color:var(--success)">
@@ -2607,15 +3014,16 @@ const Modal = {
         </div>
         <div class="client-list" style="margin-bottom:8px">
           ${atrasados.map(p => {
-            const c = Store.getCliente(p.clienteId);
+            const c = Store.getCliente(p.clienteId) || { nombre: '(cliente eliminado)' };
             const tabla = Store.getTableraAmortizacion(p);
             const vencidas = tabla.filter(t => t.estado === 'vencido');
+            const penal = vencidas.reduce((s, t) => s + t.penalizacion, 0);
             return `
-              <div class="client-row" onclick="App.navigate('clienteDetalle','${p.clienteId}')">
-                <div class="c-avatar ${Fmt.avatarColor(c.nombre)}">${Fmt.initials(c.nombre)}</div>
+              <div class="client-row" onclick="App.navigate('clienteDetalle','${Fmt.esc(p.clienteId)}')">
+                <div class="c-avatar ${Fmt.avatarColor(c.nombre)}">${Fmt.esc(Fmt.initials(c.nombre))}</div>
                 <div class="c-info">
-                  <div class="c-name">${c.nombre}</div>
-                  <div class="c-detail">${vencidas.length} cuota${vencidas.length !== 1 ? 's' : ''} vencida${vencidas.length !== 1 ? 's' : ''}</div>
+                  <div class="c-name">${Fmt.esc(c.nombre)}</div>
+                  <div class="c-detail">${vencidas.length} cuota${vencidas.length !== 1 ? 's' : ''} vencida${vencidas.length !== 1 ? 's' : ''} · penal. ${Fmt.currency(penal)}</div>
                 </div>
                 <div class="c-right">
                   <div class="c-amount">${Fmt.currency(Store.getSaldoRestante(p.id))}</div>
@@ -2636,10 +3044,10 @@ const Modal = {
                 <div class="pmt-row">
                   <div class="pmt-dot paid"></div>
                   <div class="pmt-info">
-                    <div class="pmt-date">${c?.nombre || '—'}</div>
-                    <div class="pmt-note">${Fmt.date(pg.fecha)} · ${pg.metodo}</div>
+                    <div class="pmt-date">${Fmt.esc(c?.nombre || '—')}</div>
+                    <div class="pmt-note">${Fmt.date(pg.fecha)} · ${Fmt.esc(Fmt.metodoLabel(pg.metodo))}${pg.numCuota ? ' · cuota ' + pg.numCuota : ''}${Number(pg.penalizacion) > 0 ? ' · con penalización' : ''}</div>
                   </div>
-                  <div class="pmt-amount">${Fmt.currency(pg.monto)}</div>
+                  <div class="pmt-amount">${Fmt.currency(Store.totalPago(pg))}</div>
                   ${pg.comprobanteUrl ? `<i class="ti ti-photo" style="font-size:14px;color:var(--gold)"></i>` : ''}
                 </div>`;
             }).join('')
@@ -2662,7 +3070,7 @@ const Modal = {
     const backBtn = document.createElement('button');
     backBtn.className = 'back-btn';
     backBtn.innerHTML = '<i class="ti ti-arrow-left"></i>';
-    backBtn.onclick = () => App.navigate('dashboard');
+    backBtn.onclick = () => App.back('dashboard');
     header.appendChild(backBtn);
     const hdrText = document.createElement('div');
     hdrText.style.paddingLeft = '36px';
@@ -2681,17 +3089,13 @@ const Modal = {
       body.appendChild(empty);
     } else {
       solicitudes.forEach(sol => {
-        const frecuenciaSolicitud = sol.frecuencia || 'semanal';
-        const numPagos = Number(
-          sol.plazo || sol.numeroPagos ||
-          (frecuenciaSolicitud === 'semanal' ? sol.semanas : sol.quincenas) || 1
-        );
-        const interes = Number(sol.interes || (
-          frecuenciaSolicitud === 'semanal'
-            ? (numPagos <= 4 ? 30 : numPagos <= 8 ? 40 : 50)
-            : getInteresPorQuincenas(numPagos)
-        ));
-        const { total, cuota } = Store.calcPrestamo(sol.monto, interes, numPagos);
+        const E = Fmt.esc;
+        const cond = Store.condicionesSolicitud(sol);
+        const frecuenciaSolicitud = cond.frecuencia;
+        const numPagos = cond.plazo;
+        const interes = cond.interes;
+        const { total, cuota } = cond;
+        const interesAlterado = sol.interes != null && Number(sol.interes) !== interes;
         const fechaObj = new Date(sol.createdAt);
         const fecha = fechaObj.toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'});
 
@@ -2702,9 +3106,9 @@ const Modal = {
         const topRow = document.createElement('div');
         topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px';
         const nameDiv = document.createElement('div');
-        nameDiv.innerHTML = '<div style="font-size:15px;font-weight:600;color:var(--ink)">' + sol.nombre + '</div>'
+        nameDiv.innerHTML = '<div style="font-size:15px;font-weight:600;color:var(--ink)">' + E(sol.nombre) + '</div>'
           + '<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">'
-          + '<i class="ti ti-phone" style="font-size:11px"></i> ' + sol.telefono + ' · ' + fecha + '</div>';
+          + '<i class="ti ti-phone" style="font-size:11px"></i> ' + E(sol.telefono) + ' · ' + fecha + '</div>';
         const badgeEl = document.createElement('span');
         badgeEl.className = 'badge badge-warn';
         badgeEl.textContent = 'Pendiente';
@@ -2730,6 +3134,14 @@ const Modal = {
         });
         card.appendChild(statsGrid);
 
+        if (interesAlterado) {
+          const altBox = document.createElement('div');
+          altBox.className = 'info-box';
+          altBox.style.cssText = 'margin-bottom:8px;background:var(--danger-light);color:var(--danger)';
+          altBox.innerHTML = '<i class="ti ti-shield-exclamation"></i><span>La solicitud llegó con un interés de ' + E(sol.interes) + '%. Se aplicará el interés correcto de ' + interes + '%.</span>';
+          card.appendChild(altBox);
+        }
+
         if (sol.requiereRevisionLimite || Number(sol.monto) > 2000) {
           const revisionBox = document.createElement('div');
           revisionBox.className = 'info-box';
@@ -2744,7 +3156,7 @@ const Modal = {
           const domBox = document.createElement('div');
           domBox.className = 'info-box';
           domBox.style.marginBottom = '8px';
-          domBox.innerHTML = '<i class="ti ti-map-pin"></i><span>' + domTexto + '</span>';
+          domBox.innerHTML = '<i class="ti ti-map-pin"></i><span>' + E(domTexto) + '</span>';
           card.appendChild(domBox);
         }
 
@@ -2753,9 +3165,9 @@ const Modal = {
           const refBox = document.createElement('div');
           refBox.className = 'info-box';
           refBox.style.marginBottom = '8px';
-          refBox.innerHTML = '<i class="ti ti-user"></i><span>Ref: ' + sol.refNombre
-            + (sol.refParentesco ? ' (' + sol.refParentesco + ')' : '')
-            + (sol.refTelefono ? ' · ' + sol.refTelefono : '') + '</span>';
+          refBox.innerHTML = '<i class="ti ti-user"></i><span>Ref: ' + E(sol.refNombre)
+            + (sol.refParentesco ? ' (' + E(sol.refParentesco) + ')' : '')
+            + (sol.refTelefono ? ' · ' + E(sol.refTelefono) : '') + '</span>';
           card.appendChild(refBox);
         }
 
@@ -2769,7 +3181,7 @@ const Modal = {
           depWrap.appendChild(depTitle);
           const depInfo = document.createElement('div');
           depInfo.style.cssText = 'font-size:12px;color:var(--green-deep)';
-          depInfo.innerHTML = '<strong>' + (sol.banco || 'Banco') + '</strong><br/><span style="font-family:monospace;font-size:13px">' + sol.clabe + '</span>';
+          depInfo.innerHTML = '<strong>' + E(sol.banco || 'Banco') + '</strong><br/><span style="font-family:monospace;font-size:13px">' + E(sol.clabe) + '</span>';
           depWrap.appendChild(depInfo);
           const copyBtn = document.createElement('button');
           copyBtn.style.cssText = 'margin-top:8px;padding:7px 12px;border-radius:var(--r-md);border:1px solid var(--green);background:var(--white);color:var(--green-deep);font-size:11px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif';
@@ -2791,7 +3203,7 @@ const Modal = {
         }
 
         // Fotos INE
-        if (sol.fotoIneUrl || sol.fotoIneBackUrl) {
+        if (sol.fotoIneUrl || sol.fotoIneBackUrl || sol.fotoDomicilioUrl) {
           const fotosWrap = document.createElement('div');
           fotosWrap.style.cssText = 'margin-bottom:10px';
           const fotosLbl = document.createElement('div');
@@ -2804,23 +3216,26 @@ const Modal = {
             const f = document.createElement('div');
             f.style.cssText = 'text-align:center';
             f.innerHTML = '<div style="font-size:9px;color:var(--ink-soft);margin-bottom:3px">INE Frente</div>'
-              + '<img src="' + sol.fotoIneUrl + '" style="width:100%;height:60px;object-fit:cover;border-radius:var(--r-md);border:0.5px solid var(--sand-mid)"/>';
+              + '<img data-ver="INE · frente" src="' + E(sol.fotoIneUrl) + '" style="cursor:pointer;"width:100%;height:60px;object-fit:cover;border-radius:var(--r-md);border:0.5px solid var(--sand-mid)"/>';
             fotosGrid.appendChild(f);
           }
           if (sol.fotoIneBackUrl) {
             const f = document.createElement('div');
             f.style.cssText = 'text-align:center';
             f.innerHTML = '<div style="font-size:9px;color:var(--ink-soft);margin-bottom:3px">INE Reverso</div>'
-              + '<img src="' + sol.fotoIneBackUrl + '" style="width:100%;height:60px;object-fit:cover;border-radius:var(--r-md);border:0.5px solid var(--sand-mid)"/>';
+              + '<img data-ver="INE · reverso" src="' + E(sol.fotoIneBackUrl) + '" style="cursor:pointer;"width:100%;height:60px;object-fit:cover;border-radius:var(--r-md);border:0.5px solid var(--sand-mid)"/>';
             fotosGrid.appendChild(f);
           }
           if (sol.fotoDomicilioUrl) {
             const f = document.createElement('div');
             f.style.cssText = 'text-align:center';
             f.innerHTML = '<div style="font-size:9px;color:var(--ink-soft);margin-bottom:3px">Domicilio</div>'
-              + '<img src="' + sol.fotoDomicilioUrl + '" style="width:100%;height:60px;object-fit:cover;border-radius:var(--r-md);border:0.5px solid var(--sand-mid)"/>';
+              + '<img data-ver="Comprobante de domicilio" src="' + E(sol.fotoDomicilioUrl) + '" style="cursor:pointer;"width:100%;height:60px;object-fit:cover;border-radius:var(--r-md);border:0.5px solid var(--sand-mid)"/>';
             fotosGrid.appendChild(f);
           }
+          fotosGrid.querySelectorAll('img[data-ver]').forEach(img => {
+            img.onclick = () => ClienteDetalle.verFoto(img.src, img.dataset.ver);
+          });
           fotosWrap.appendChild(fotosGrid);
           card.appendChild(fotosWrap);
         }
@@ -2848,7 +3263,9 @@ const Modal = {
         btnRechazar.addEventListener('click', async () => {
           if (!confirm('¿Rechazar esta solicitud?')) return;
           btnRechazar.disabled = true;
-          await Store.rechazarSolicitud(sol.id);
+          const wa = sol.telefono ? window.open('', '_blank') : null;
+          try { await Store.rechazarSolicitud(sol.id); }
+          catch (e) { console.error(e); if (wa) wa.close(); Toast.error('No se pudo rechazar'); btnRechazar.disabled = false; return; }
           Toast.success('Solicitud rechazada');
           if (sol.telefono) {
             const nombre = sol.nombre.split(' ')[0];
@@ -2856,9 +3273,8 @@ const Modal = {
               '', 'En esta ocasion no fue posible aprobar tu solicitud de prestamo.',
               '', 'Te invitamos a intentarlo nuevamente. Estamos para servirte.',
               '', '*Varito* - Tu dinerito, siempre a la mano'].join('\n');
-            setTimeout(() => window.open('https://wa.me/52' + sol.telefono + '?text=' + encodeURIComponent(msg), '_blank'), 400);
+            if (wa) wa.location.href = 'https://wa.me/52' + String(sol.telefono).replace(/\D/g, '') + '?text=' + encodeURIComponent(msg);
           }
-          App.renderView();
         });
 
         const btnAutorizar = document.createElement('button');
@@ -2866,17 +3282,20 @@ const Modal = {
         btnAutorizar.style.flex = '2';
         btnAutorizar.innerHTML = '<i class="ti ti-check"></i> Autorizar';
         btnAutorizar.addEventListener('click', async () => {
+          if (!confirm('¿Autorizar el préstamo de ' + Fmt.currency(cond.monto) + ' para ' + sol.nombre + '?')) return;
           btnAutorizar.disabled = true;
           btnAutorizar.innerHTML = '<i class="ti ti-loader"></i> Autorizando...';
+          // Se abre la ventana antes de esperar a Firebase para que el navegador no la bloquee
+          const wa = sol.telefono ? window.open('', '_blank') : null;
           try {
             const { clienteId, prestamo } = await Store.autorizarSolicitud(sol.id);
-            if (sol.telefono) {
+            if (wa) {
               const nombre = sol.nombre.split(' ')[0];
               const tabla = Store.getTableraAmortizacion(prestamo);
               const tablaTexto = tabla.map(c => c.num + '. ' + Fmt.date(c.fecha) + ': ' + Fmt.currency(c.monto)).join('\n');
               const msg = ['Hola ' + nombre + ', felicidades!',
                 '', 'Tu prestamo ha sido *AUTORIZADO*',
-                '', '*Monto:* ' + Fmt.currency(sol.monto),
+                '', '*Monto:* ' + Fmt.currency(cond.monto),
                 '*Interes:* ' + interes + '%',
                 '*Pagos:* ' + numPagos + ' ' + frecuenciaSolicitud + 'es',
                 '*Por cuota:* ' + Fmt.currency(cuota),
@@ -2884,17 +3303,18 @@ const Modal = {
                 '', '*Tu tabla de pagos:*', tablaTexto,
                 '', 'Gracias por confiar en nosotros',
                 '', '*Varito* - Tu dinerito, siempre a la mano'].join('\n');
-              setTimeout(() => window.open('https://wa.me/52' + sol.telefono + '?text=' + encodeURIComponent(msg), '_blank'), 400);
+              wa.location.href = 'https://wa.me/52' + String(sol.telefono).replace(/\D/g, '') + '?text=' + encodeURIComponent(msg);
             }
-            Toast.success('Prestamo autorizado');
+            Toast.success('Préstamo autorizado');
             // Mostrar pantalla de depósito si es transferencia
             if (sol.metodoEntrega === 'transferencia' && sol.clabe) {
               Solicitudes.mostrarDeposito(sol, clienteId);
             } else {
-              App.navigate('clienteDetalle', clienteId);
+              App.navigate('clienteDetalle', clienteId, { replace: true });
             }
           } catch(e) {
             console.error(e);
+            if (wa) wa.close();
             Toast.error('Error al autorizar. Intenta de nuevo.');
             btnAutorizar.disabled = false;
             btnAutorizar.innerHTML = '<i class="ti ti-check"></i> Autorizar';
@@ -2938,15 +3358,16 @@ const Modal = {
     const montoBox = document.createElement('div');
     montoBox.style.cssText = 'background:var(--green-light);border-radius:var(--r-lg);padding:16px;text-align:center;margin-bottom:12px';
     montoBox.innerHTML = '<div style="font-size:10px;font-weight:700;color:var(--green-deep);letter-spacing:1px">MONTO A DEPOSITAR</div>'
-      + '<div style="font-size:30px;font-weight:700;color:var(--green-deep)">' + Fmt.currency(sol.monto) + '</div>';
+      + '<div style="font-size:30px;font-weight:700;color:var(--green-deep)">' + Fmt.currency(Number(sol.monto) || 0) + '</div>';
     sheet.appendChild(montoBox);
 
     // Datos bancarios
     const bankBox = document.createElement('div');
     bankBox.style.cssText = 'background:var(--sand);border-radius:var(--r-lg);padding:14px;margin-bottom:12px';
-    bankBox.innerHTML = '<div style="display:flex;justify-content:space-between;padding:5px 0"><span style="font-size:12px;color:var(--ink-soft)">Banco</span><span style="font-size:13px;font-weight:600;color:var(--ink)">' + (sol.banco||'—') + '</span></div>'
-      + '<div style="display:flex;justify-content:space-between;padding:5px 0"><span style="font-size:12px;color:var(--ink-soft)">CLABE</span><span style="font-size:12px;font-family:monospace;font-weight:600;color:var(--ink)">' + sol.clabe + '</span></div>'
-      + '<div style="display:flex;justify-content:space-between;padding:5px 0"><span style="font-size:12px;color:var(--ink-soft)">Titular</span><span style="font-size:13px;font-weight:600;color:var(--ink)">' + sol.nombre + '</span></div>';
+    const E = Fmt.esc;
+    bankBox.innerHTML = '<div style="display:flex;justify-content:space-between;padding:5px 0"><span style="font-size:12px;color:var(--ink-soft)">Banco</span><span style="font-size:13px;font-weight:600;color:var(--ink)">' + E(sol.banco||'—') + '</span></div>'
+      + '<div style="display:flex;justify-content:space-between;padding:5px 0"><span style="font-size:12px;color:var(--ink-soft)">CLABE</span><span style="font-size:12px;font-family:monospace;font-weight:600;color:var(--ink)">' + E(sol.clabe) + '</span></div>'
+      + '<div style="display:flex;justify-content:space-between;padding:5px 0"><span style="font-size:12px;color:var(--ink-soft)">Titular</span><span style="font-size:13px;font-weight:600;color:var(--ink)">' + E(sol.nombre) + '</span></div>';
     sheet.appendChild(bankBox);
 
     // Botones copiar
@@ -2997,12 +3418,12 @@ const Modal = {
     btnListo.innerHTML = '<i class="ti ti-check"></i> Depósito realizado';
     btnListo.onclick = () => {
       backdrop.remove();
-      App.navigate('clienteDetalle', clienteId);
+      App.navigate('clienteDetalle', clienteId, { replace: true });
     };
     sheet.appendChild(btnListo);
 
     backdrop.appendChild(sheet);
-    backdrop.onclick = (e) => { if (e.target === backdrop) { backdrop.remove(); App.navigate('clienteDetalle', clienteId); } };
+    backdrop.onclick = (e) => { if (e.target === backdrop) { backdrop.remove(); App.navigate('clienteDetalle', clienteId, { replace: true }); } };
     document.body.appendChild(backdrop);
   }
 };
@@ -3018,7 +3439,7 @@ const Modal = {
       <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
       <div style="padding-left:36px"><h1>Configuración</h1><p>Firma de Yaretzi</p></div>`;
     el.appendChild(header);
-    el.querySelector('#back-btn').onclick = () => App.navigate('dashboard');
+    el.querySelector('#back-btn').onclick = () => App.back('dashboard');
 
     const body = document.createElement('div');
     body.style.padding = '16px';
@@ -3161,7 +3582,7 @@ const Modal = {
         const firmaUrl = canvas.toDataURL('image/png');
         await Store.guardarFirmaYaretzi(firmaUrl);
         Toast.success('Firma guardada correctamente');
-        App.navigate('dashboard');
+        App.navigate('dashboard', null, { replace: true });
       } catch(e) {
         Toast.error('Error al guardar la firma');
         btnGuardar.disabled = false;
@@ -3176,11 +3597,32 @@ const Modal = {
   route: 'dashboard',
   param: null,
 
-  navigate(route, param) {
+  // Pantallas con formularios: no se redibujan solas cuando llegan datos nuevos,
+  // para no borrar lo que se está capturando.
+  rutasFormulario: ['nuevoCliente', 'editarCliente', 'nuevoPrestamo', 'registrarPago', 'configuracion'],
+
+  // Navega a una pantalla. Se registra en el historial del navegador para que el
+  // botón "atrás" del celular regrese a la pantalla anterior en lugar de cerrar la app.
+  navigate(route, param, opts = {}) {
     this.route = route;
     this.param = param || null;
+    try {
+      if (opts.replace) {
+        history.replaceState({ route: this.route, param: this.param, depth: this._pila }, '');
+      } else {
+        this._pila++;
+        history.pushState({ route: this.route, param: this.param, depth: this._pila }, '');
+      }
+    } catch (e) {}
     this.renderView();
     window.scrollTo(0, 0);
+  },
+  _pila: 0,
+
+  // Regresa a la pantalla anterior; si no hay a dónde regresar, va a la ruta indicada
+  back(fallbackRoute, fallbackParam) {
+    if (this._pila > 0) history.back();
+    else this.navigate(fallbackRoute || 'dashboard', fallbackParam, { replace: true });
   },
 
   renderView() {
@@ -3188,7 +3630,7 @@ const Modal = {
     const tabBar = document.getElementById('tab-bar');
     viewEl.innerHTML = '';
 
-    if (!Store.isLoaded() && ['dashboard','clientes','reportes','solicitudes'].includes(this.route)) {
+    if (!Store.isLoaded()) {
       viewEl.innerHTML = `
         <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:40px;min-height:60vh">
           <img src="https://enriquerocham.github.io/varito/%C3%8DCONO.png" alt="Varito" style="width:72px;height:72px;object-fit:contain"/>
@@ -3214,19 +3656,26 @@ const Modal = {
       reportes:       () => Reportes.render(),
       solicitudes:    () => Solicitudes.render(),
       configuracion:  () => Configuracion.render(),
-      configuracion:  () => Configuracion.render(),
-      solicitudes:    () => Solicitudes.render(),
     };
 
-    const renderFn = views[this.route];
-    if (renderFn) {
-      const content = renderFn();
-      if (content) viewEl.appendChild(content);
-    }
+    const renderFn = views[this.route] || views.dashboard;
+    const content = renderFn();
+    // Si la pantalla redirigió a otra mientras se dibujaba, no sobreescribir
+    if (content && !viewEl.firstChild) viewEl.appendChild(content);
 
-    const tabMap = { dashboard: 0, clientes: 1, reportes: 3 };
+    const tabMap = { dashboard: 0, clientes: 1, nuevoPrestamo: 2, reportes: 3 };
     document.querySelectorAll('.tab').forEach((t,i) =>
       t.classList.toggle('active', i === (tabMap[this.route] ?? -1)));
+  },
+
+  // Llegaron datos nuevos de Firebase
+  onDatos() {
+    if (this.rutasFormulario.includes(this.route)) return;
+    if (document.querySelector('.modal-backdrop')) return;
+    if (this.route === 'clientes' && Clientes.refrescar()) return;
+    const y = window.scrollY;
+    this.renderView();
+    window.scrollTo(0, y);
   },
 
   init() {
@@ -3244,22 +3693,38 @@ const Modal = {
     tabBar.className = 'tab-bar';
     tabBar.id = 'tab-bar';
     tabBar.innerHTML = `
-      <button class="tab active" onclick="App.navigate('dashboard')">
+      <button class="tab active" data-r="dashboard">
         <i class="ti ti-home tab-icon"></i><span class="tab-lbl">Inicio</span>
       </button>
-      <button class="tab" onclick="App.navigate('clientes')">
+      <button class="tab" data-r="clientes">
         <i class="ti ti-users tab-icon"></i><span class="tab-lbl">Clientes</span>
       </button>
-      <button class="tab" onclick="App.navigate('nuevoPrestamo')">
+      <button class="tab" data-r="nuevoPrestamo">
         <i class="ti ti-cash tab-icon"></i><span class="tab-lbl">Préstamo</span>
       </button>
-      <button class="tab" onclick="App.navigate('reportes')">
+      <button class="tab" data-r="reportes">
         <i class="ti ti-chart-bar tab-icon"></i><span class="tab-lbl">Reportes</span>
       </button>`;
+    tabBar.querySelectorAll('.tab').forEach(t => {
+      t.onclick = () => { if (App.route !== t.dataset.r) App.navigate(t.dataset.r); };
+    });
     shell.appendChild(tabBar);
     document.getElementById('app').appendChild(shell);
 
-    Store.subscribe(() => App.renderView());
+    // Historial: la primera entrada es el inicio
+    try { history.replaceState({ route: 'dashboard', param: null, depth: 0 }, ''); } catch (e) {}
+    window.addEventListener('popstate', (e) => {
+      const st = e.state || { route: 'dashboard', param: null, depth: 0 };
+      App._pila = st.depth || 0;
+      // Cerrar ventanas emergentes abiertas
+      document.querySelectorAll('.modal-backdrop').forEach(m => m.remove());
+      App.route = st.route || 'dashboard';
+      App.param = st.param || null;
+      App.renderView();
+      window.scrollTo(0, 0);
+    });
+
+    Store.subscribe(() => App.onDatos());
     Store.init();
     this.renderView();
   }

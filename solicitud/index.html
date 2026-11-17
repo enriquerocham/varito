@@ -125,7 +125,9 @@ const getNumPagos = plazo => plazo;
 const getDias = f => f==='semanal'?7:15;
 const fmtC = n => '$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtD = str => { if(!str)return'—'; const[y,m,d]=str.split('-'); const ms=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']; return parseInt(d)+' '+ms[parseInt(m)-1]+' '+y; };
-const today = () => new Date().toISOString().split('T')[0];
+// Fecha en hora local (no UTC: después de las 6 pm en México, UTC ya es el día siguiente)
+const ymd = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const today = () => ymd(new Date());
 
 let step = 1;
 let fd = {}; // form data
@@ -486,7 +488,9 @@ function s4(c) {
       const f=new Date(hoy+'T00:00:00');
       f.setDate(f.getDate()+dias*i);
       const tr=document.createElement('tr');
-      tr.innerHTML='<td>'+i+'</td><td>'+fmtD(f.toISOString().split('T')[0])+'</td><td>'+fmtC(cuota)+'</td><td>'+fmtC(capC)+'</td><td>'+fmtC(intC)+'</td>';
+      // La última cuota ajusta los centavos para que la suma sea exactamente el total
+      const montoC = i===numPagos ? Math.round((total-cuota*(numPagos-1))*100)/100 : cuota;
+      tr.innerHTML='<td>'+i+'</td><td>'+fmtD(ymd(f))+'</td><td>'+fmtC(montoC)+'</td><td>'+fmtC(capC)+'</td><td>'+fmtC(intC)+'</td>';
       tbody.appendChild(tr);
     }
     tablaWrap.style.display = 'block';

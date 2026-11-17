@@ -806,26 +806,61 @@ const Store = (() => {
       return { id: ref.id, ...doc };
     },
 
-    // Condiciones de una solicitud, recalculadas aquí (no se confía en el interés que manda el formulario)
-    condicionesSolicitud: (sol) => {
-      const frecuencia = sol.frecuencia || 'semanal';
-      const plazo = Number(
+    // Busca un cliente ya registrado con el mismo teléfono (para no duplicarlo)
+    buscarClientePorTelefono: (tel) => {
+      const t = String(tel || '').replace(/\D/g, '').slice(-10);
+      if (t.length !== 10) return null;
+      return state.clientes.find(c => String(c.telefono || '').replace(/\D/g, '').slice(-10) === t) || null;
+    },
+
+    // Resumen del historial de un cliente para decidir si se le presta
+    historialCliente: (clienteId) => {
+      const ps = state.prestamos.filter(p => p.clienteId === clienteId);
+      const liquidados = ps.filter(p => p.estado === 'liquidado');
+      const activos = ps.filter(p => p.estado === 'activo');
+      const conAtraso = activos.filter(p => tablaDe(p).some(c => c.estado === 'vencido'));
+      return {
+        total: ps.length,
+        liquidados: liquidados.length,
+        puntuales: liquidados.filter(p => !p.tuvoAtraso).length,
+        activos: activos.length,
+        conAtraso: conAtraso.length,
+        saldoActivo: activos.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0),
+      };
+    },
+
+    // Condiciones de una solicitud, recalculadas aquí (no se confía en el interés que manda el formulario).
+    // "ajustes" permite autorizar con otro monto, frecuencia o plazo.
+    condicionesSolicitud: (sol, ajustes) => {
+      const a = ajustes || {};
+      const frecuencia = a.frecuencia || sol.frecuencia || 'semanal';
+      const plazo = Number(a.plazo ||
         sol.plazo || sol.numeroPagos ||
         (frecuencia === 'semanal' ? sol.semanas : sol.quincenas) || 1
       );
-      const monto = Number(sol.monto) || 0;
+      const monto = Number(a.monto || sol.monto) || 0;
       const interes = getInteresPorPlazo(plazo, frecuencia);
       const { total, cuota } = Store.calcPrestamo(monto, interes, plazo);
       return { frecuencia, plazo, monto, interes, total, cuota };
     },
 
-    autorizarSolicitud: async (solicitudId) => {
+    autorizarSolicitud: async (solicitudId, ajustes) => {
       const sol = state.solicitudes.find(s => s.id === solicitudId);
       if (!sol) throw new Error('Solicitud no encontrada');
 
-      // 1. Crear o actualizar cliente (con sus fotos de INE y domicilio)
+      // 1. Si ya es cliente (mismo teléfono), se usa su ficha y se actualizan sus datos
+      //    con los de esta solicitud; si no, se crea un cliente nuevo.
       let clienteId = sol.clienteId;
-      if (!clienteId) {
+      const existente = !clienteId ? Store.buscarClientePorTelefono(sol.telefono) : null;
+      if (existente) {
+        clienteId = existente.id;
+        const campos = ['nombre', 'fechaNacimiento', 'ine', 'calle', 'numExt', 'numInt', 'colonia', 'cp', 'ciudad',
+          'refNombre', 'refParentesco', 'refTelefono', 'refDireccion', 'fotoIneUrl', 'fotoIneBackUrl', 'fotoDomicilioUrl'];
+        const upd = {};
+        campos.forEach(k => { if (sol[k]) upd[k] = sol[k]; });
+        if (sol.firmaClienteUrl) { upd.firmaClienteUrl = sol.firmaClienteUrl; upd.firmaUrl = sol.firmaClienteUrl; }
+        if (Object.keys(upd).length) await Store.updateCliente(clienteId, upd);
+      } else if (!clienteId) {
         const clienteData = {
           nombre: sol.nombre, telefono: sol.telefono,
           fechaNacimiento: sol.fechaNacimiento || '', ine: sol.ine || '',
@@ -848,8 +883,11 @@ const Store = (() => {
         });
       }
 
-      // 2. Crear préstamo con la tabla de interés oficial
-      const { frecuencia, plazo, monto, interes, total, cuota } = Store.condicionesSolicitud(sol);
+      // 2. Crear préstamo con la tabla de interés oficial (y los ajustes, si los hubo)
+      const { frecuencia, plazo, monto, interes, total, cuota } = Store.condicionesSolicitud(sol, ajustes);
+      const fueAjustada = Boolean(ajustes) && (monto !== Number(sol.monto) || frecuencia !== (sol.frecuencia || 'semanal') ||
+        plazo !== Number(sol.plazo || sol.numeroPagos || 0));
+      const limite = Store.getLimiteCliente(Store.getCliente(clienteId) || { id: clienteId });
       const prestamo = await Store.addPrestamo({
         clienteId,
         monto,
@@ -861,18 +899,21 @@ const Store = (() => {
         fechaInicio: hoyLocal(),
         totalConInteres: total,
         pagoCuota: cuota,
-        excepcionLimite: Boolean(sol.requiereRevisionLimite || monto > 2000),
-        limiteCreditoAlRegistrar: Number(sol.limiteReferencia || 2000),
+        excepcionLimite: monto > limite,
+        limiteCreditoAlRegistrar: limite,
         solicitudOrigen: solicitudId,
+        ...(fueAjustada ? { ajustadoDesde: { monto: Number(sol.monto) || 0, frecuencia: sol.frecuencia || 'semanal', plazo: Number(sol.plazo || sol.numeroPagos || 0) } } : {}),
       });
 
       // 3. Marcar solicitud como autorizada
       await db.collection('solicitudes').doc(solicitudId).update({
         estado: 'autorizada', clienteId, prestamoId: prestamo.id,
         fechaAutorizacion: new Date().toISOString(),
+        ...(fueAjustada ? { ajustada: true } : {}),
+        ...(existente ? { clienteExistente: true } : {}),
       });
 
-      return { clienteId, prestamo };
+      return { clienteId, prestamo, fueAjustada, clienteExistente: Boolean(existente) };
     },
 
     rechazarSolicitud: async (solicitudId) => {
@@ -3581,6 +3622,34 @@ const Instalar = {
         topRow.appendChild(badgeEl);
         card.appendChild(topRow);
 
+        // ¿Ya es cliente? (mismo teléfono)
+        const existente = Store.buscarClientePorTelefono(sol.telefono);
+        if (existente) {
+          const h = Store.historialCliente(existente.id);
+          const lim = Store.getLimiteCliente(existente);
+          const ex = document.createElement('div');
+          ex.className = 'info-box';
+          ex.style.cssText = 'margin-bottom:10px;flex-direction:column;gap:4px;background:' + (h.conAtraso ? 'var(--danger-light)' : 'var(--navy-light)');
+          ex.innerHTML = '<div style="display:flex;gap:8px;align-items:center;font-weight:600;color:var(--navy)"><i class="ti ti-user-check"></i> Ya es cliente: ' + E(existente.nombre) + '</div>'
+            + '<div style="font-size:12px;color:var(--ink-mid)">' + h.liquidados + ' préstamo' + (h.liquidados !== 1 ? 's' : '') + ' liquidado' + (h.liquidados !== 1 ? 's' : '') + ' (' + h.puntuales + ' puntual' + (h.puntuales !== 1 ? 'es' : '') + ')'
+            + ' · ' + h.activos + ' activo' + (h.activos !== 1 ? 's' : '') + (h.activos ? ' (saldo ' + Fmt.currency(h.saldoActivo) + ')' : '')
+            + ' · línea ' + Fmt.currency(lim) + '</div>'
+            + (h.conAtraso ? '<div style="font-size:12px;color:var(--danger);font-weight:600"><i class="ti ti-alert-triangle"></i> Tiene un préstamo con cuotas vencidas</div>' : '')
+            + (cond.monto > lim ? '<div style="font-size:12px;color:#8B5E1A"><i class="ti ti-alert-circle"></i> Pide ' + Fmt.currency(cond.monto) + ', más que su línea de ' + Fmt.currency(lim) + '</div>' : '')
+            + '<div style="font-size:11px;color:var(--ink-soft)">Al autorizar, el préstamo se agrega a su ficha y sus datos se actualizan con esta solicitud. <a style="color:var(--green-deep);cursor:pointer;text-decoration:underline" data-ver-cliente>Ver ficha</a></div>';
+          ex.querySelector('[data-ver-cliente]').onclick = () => App.navigate('clienteDetalle', existente.id);
+          card.appendChild(ex);
+        }
+
+        // Constancia de que aceptó condiciones y aviso de privacidad
+        if (sol.aceptaCondiciones || sol.aceptaPrivacidad) {
+          const ac = document.createElement('div');
+          ac.style.cssText = 'font-size:11px;color:var(--success);margin:-4px 0 10px;display:flex;gap:6px;align-items:center';
+          ac.innerHTML = '<i class="ti ti-circle-check"></i> Aceptó condiciones (incluida la penalización) y aviso de privacidad'
+            + (sol.aceptaCondiciones && sol.aceptaCondiciones.fecha ? ' · ' + new Date(sol.aceptaCondiciones.fecha).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '');
+          card.appendChild(ac);
+        }
+
         // Stats grid
         const statsGrid = document.createElement('div');
         statsGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px';
@@ -3607,7 +3676,7 @@ const Instalar = {
           card.appendChild(altBox);
         }
 
-        if (sol.requiereRevisionLimite || Number(sol.monto) > 2000) {
+        if (!existente && (sol.requiereRevisionLimite || Number(sol.monto) > 2000)) {
           const revisionBox = document.createElement('div');
           revisionBox.className = 'info-box';
           revisionBox.style.cssText = 'margin-bottom:8px;background:var(--warn-light);color:#8B5E1A';
@@ -3742,38 +3811,38 @@ const Instalar = {
           }
         });
 
-        const btnAutorizar = document.createElement('button');
-        btnAutorizar.className = 'btn btn-success btn-sm';
-        btnAutorizar.style.flex = '2';
-        btnAutorizar.innerHTML = '<i class="ti ti-check"></i> Autorizar';
-        btnAutorizar.addEventListener('click', async () => {
-          if (!confirm('¿Autorizar el préstamo de ' + Fmt.currency(cond.monto) + ' para ' + sol.nombre + '?')) return;
-          btnAutorizar.disabled = true;
-          btnAutorizar.innerHTML = '<i class="ti ti-loader"></i> Autorizando...';
+        // Autoriza (tal cual o con ajustes) y avisa al cliente por WhatsApp
+        const autorizar = async (ajustes, boton, cerrarHoja) => {
+          const c2 = Store.condicionesSolicitud(sol, ajustes);
+          const original = boton.innerHTML;
+          boton.disabled = true;
+          boton.innerHTML = '<i class="ti ti-loader"></i> Autorizando...';
           // Se abre la ventana antes de esperar a Firebase para que el navegador no la bloquee
           const wa = sol.telefono ? window.open('', '_blank') : null;
           try {
-            const { clienteId, prestamo } = await Store.autorizarSolicitud(sol.id);
+            const { clienteId, prestamo, fueAjustada } = await Store.autorizarSolicitud(sol.id, ajustes);
+            if (cerrarHoja) cerrarHoja();
             if (wa) {
-              const nombre = sol.nombre.split(' ')[0];
+              const nombre = String(sol.nombre).split(' ')[0];
               const tabla = Store.getTableraAmortizacion(prestamo);
               const tablaTexto = tabla.map(c => c.num + '. ' + Fmt.date(c.fecha) + ': ' + Fmt.currency(c.monto)).join('\n');
-              const msg = ['Hola ' + nombre + ', felicidades!',
-                '', 'Tu prestamo ha sido *AUTORIZADO*',
-                '', '*Monto:* ' + Fmt.currency(cond.monto),
-                '*Interes:* ' + interes + '%',
-                '*Pagos:* ' + numPagos + ' ' + frecuenciaSolicitud + 'es',
-                '*Por cuota:* ' + Fmt.currency(cuota),
-                '*Total a pagar:* ' + Fmt.currency(total),
+              const unidad = c2.frecuencia === 'semanal' ? 'semanales' : 'quincenales';
+              const msg = ['Hola ' + nombre + ', ¡felicidades! 🎉',
+                '', 'Tu préstamo ha sido *AUTORIZADO*',
+                ...(fueAjustada ? ['', 'Revisamos tu solicitud y la ajustamos a lo que podemos ofrecerte hoy (solicitaste ' + Fmt.currency(Number(sol.monto) || 0) + ').'] : []),
+                '', '*Monto:* ' + Fmt.currency(c2.monto),
+                '*Interés:* ' + c2.interes + '%',
+                '*Pagos:* ' + c2.plazo + ' ' + unidad,
+                '*Por cuota:* ' + Fmt.currency(c2.cuota),
+                '*Total a pagar:* ' + Fmt.currency(c2.total),
                 '', '*Tu tabla de pagos:*', tablaTexto,
-                '', 'Gracias por confiar en nosotros',
-                '', '*Varito* - Tu dinerito, siempre a la mano'].join('\n');
+                '', 'Recuerda que cada día de atraso genera una penalización. Gracias por confiar en nosotros.',
+                '', '*Varito* · Tu dinerito, siempre a la mano'].join('\n');
               wa.location.href = 'https://wa.me/52' + String(sol.telefono).replace(/\D/g, '') + '?text=' + encodeURIComponent(msg);
             }
-            Toast.success('Préstamo autorizado');
-            // Mostrar pantalla de depósito si es transferencia
+            Toast.success(fueAjustada ? 'Préstamo autorizado con ajustes' : 'Préstamo autorizado');
             if (sol.metodoEntrega === 'transferencia' && sol.clabe) {
-              Solicitudes.mostrarDeposito(sol, clienteId);
+              Solicitudes.mostrarDeposito(sol, clienteId, c2.monto);
             } else {
               App.navigate('clienteDetalle', clienteId, { replace: true });
             }
@@ -3781,12 +3850,28 @@ const Instalar = {
             console.error(e);
             if (wa) wa.close();
             Toast.error(navigator.onLine === false ? 'Se necesita internet para autorizar' : 'Error al autorizar. Intenta de nuevo.');
-            btnAutorizar.disabled = false;
-            btnAutorizar.innerHTML = '<i class="ti ti-check"></i> Autorizar';
+            boton.disabled = false;
+            boton.innerHTML = original;
           }
+        };
+
+        const btnAjustar = document.createElement('button');
+        btnAjustar.className = 'btn btn-secondary btn-sm';
+        btnAjustar.style.flex = '1';
+        btnAjustar.innerHTML = '<i class="ti ti-adjustments"></i> Ajustar';
+        btnAjustar.addEventListener('click', () => Solicitudes.ajustar(sol, autorizar));
+
+        const btnAutorizar = document.createElement('button');
+        btnAutorizar.className = 'btn btn-success btn-sm';
+        btnAutorizar.style.flex = '1.6';
+        btnAutorizar.innerHTML = '<i class="ti ti-check"></i> Autorizar';
+        btnAutorizar.addEventListener('click', () => {
+          if (!confirm('¿Autorizar el préstamo de ' + Fmt.currency(cond.monto) + ' para ' + sol.nombre + '?')) return;
+          autorizar(null, btnAutorizar);
         });
 
         btnRow.appendChild(btnRechazar);
+        btnRow.appendChild(btnAjustar);
         btnRow.appendChild(btnAutorizar);
         card.appendChild(btnRow);
         body.appendChild(card);
@@ -3797,7 +3882,57 @@ const Instalar = {
     return el;
   },
 
-  mostrarDeposito(sol, clienteId) {
+  // Hoja para ajustar monto, frecuencia o plazo antes de autorizar
+  ajustar(sol, autorizar) {
+    const base = Store.condicionesSolicitud(sol);
+    let monto = base.monto, frecuencia = base.frecuencia, plazo = base.plazo;
+    const existente = Store.buscarClientePorTelefono(sol.telefono);
+    const limite = existente ? Store.getLimiteCliente(existente) : 2000;
+    Hoja.abrir('Ajustar y autorizar', (body, cerrar) => {
+      body.innerHTML = `
+        <div class="info-box" style="margin-bottom:12px"><i class="ti ti-info-circle"></i><span>Solicitó <strong>${Fmt.currency(base.monto)}</strong> a ${base.plazo} pagos ${base.frecuencia === 'semanal' ? 'semanales' : 'quincenales'}. Línea de crédito: <strong>${Fmt.currency(limite)}</strong>${existente ? '' : ' (cliente nuevo)'}.</span></div>
+        <div class="field"><label>Monto a autorizar</label><input type="number" id="aj-monto" min="100" step="100" value="${monto}"/></div>
+        <div class="field" style="margin-top:10px"><label>Frecuencia</label>
+          <div class="method-row" id="aj-frec">
+            <div class="method-chip" data-f="semanal">Semanal</div>
+            <div class="method-chip" data-f="quincenal">Quincenal</div>
+          </div>
+        </div>
+        <div class="field" style="margin-top:10px"><label id="aj-plazo-lbl">Número de pagos</label><div id="aj-plazos" style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px"></div></div>
+        <div id="aj-res" class="cobro-total" style="margin:14px 0 12px;text-align:left"></div>
+        <button class="btn btn-success" id="aj-ok"><i class="ti ti-check"></i> Autorizar con estos cambios</button>`;
+      const pintarPlazos = () => {
+        const n = frecuencia === 'semanal' ? 12 : 6;
+        if (plazo > n) plazo = n;
+        body.querySelector('#aj-plazo-lbl').textContent = 'Número de ' + (frecuencia === 'semanal' ? 'semanas' : 'quincenas');
+        body.querySelectorAll('#aj-frec .method-chip').forEach(ch => ch.classList.toggle('active', ch.dataset.f === frecuencia));
+        const g = body.querySelector('#aj-plazos');
+        g.innerHTML = Array.from({ length: n }, (_, i) => i + 1).map(k =>
+          `<div class="method-chip ${k === plazo ? 'active' : ''}" data-p="${k}" style="padding:8px 2px">${k}<div style="font-size:9px;font-weight:400">${getInteresPorPlazo(k, frecuencia)}%</div></div>`).join('');
+        g.querySelectorAll('[data-p]').forEach(ch => ch.onclick = () => { plazo = Number(ch.dataset.p); pintarPlazos(); pintarRes(); });
+      };
+      const pintarRes = () => {
+        const c = Store.condicionesSolicitud(sol, { monto, frecuencia, plazo });
+        const cambios = c.monto !== base.monto || c.frecuencia !== base.frecuencia || c.plazo !== base.plazo;
+        body.querySelector('#aj-res').innerHTML = `
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink-mid)"><span>Interés</span><strong>${c.interes}% · ${Fmt.currency(c.total - c.monto)}</strong></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink-mid);margin-top:4px"><span>Total a pagar</span><strong>${Fmt.currency(c.total)}</strong></div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px"><span style="font-size:12px;color:var(--success);font-weight:600">${c.plazo} pagos de</span><span style="font-size:24px;font-weight:700;color:var(--success)">${Fmt.currency(c.cuota)}</span></div>
+          ${c.monto > limite ? `<div style="font-size:11px;color:#8B5E1A;margin-top:6px"><i class="ti ti-alert-circle"></i> Supera su línea de ${Fmt.currency(limite)}</div>` : ''}
+          ${!cambios ? '<div style="font-size:11px;color:var(--ink-soft);margin-top:6px">Sin cambios respecto a lo que solicitó.</div>' : ''}`;
+      };
+      body.querySelector('#aj-monto').addEventListener('input', e => { monto = Math.max(0, Number(e.target.value) || 0); pintarRes(); });
+      body.querySelectorAll('#aj-frec .method-chip').forEach(ch => ch.onclick = () => { frecuencia = ch.dataset.f; pintarPlazos(); pintarRes(); });
+      pintarPlazos(); pintarRes();
+      const ok = body.querySelector('#aj-ok');
+      ok.onclick = () => {
+        if (!monto || monto < 100) { Toast.error('El monto mínimo es $100'); return; }
+        autorizar({ monto, frecuencia, plazo }, ok, cerrar);
+      };
+    });
+  },
+
+  mostrarDeposito(sol, clienteId, montoAutorizado) {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
 
@@ -3823,7 +3958,7 @@ const Instalar = {
     const montoBox = document.createElement('div');
     montoBox.style.cssText = 'background:var(--green-light);border-radius:var(--r-lg);padding:16px;text-align:center;margin-bottom:12px';
     montoBox.innerHTML = '<div style="font-size:10px;font-weight:700;color:var(--green-deep);letter-spacing:1px">MONTO A DEPOSITAR</div>'
-      + '<div style="font-size:30px;font-weight:700;color:var(--green-deep)">' + Fmt.currency(Number(sol.monto) || 0) + '</div>';
+      + '<div style="font-size:30px;font-weight:700;color:var(--green-deep)">' + Fmt.currency(Number(montoAutorizado || sol.monto) || 0) + '</div>';
     sheet.appendChild(montoBox);
 
     // Datos bancarios
@@ -3855,7 +3990,7 @@ const Instalar = {
     btnCopyMonto.style.flex = '1';
     btnCopyMonto.innerHTML = '<i class="ti ti-copy"></i> Copiar monto';
     btnCopyMonto.onclick = () => {
-      navigator.clipboard.writeText(String(sol.monto)).then(() => {
+      navigator.clipboard.writeText(String(montoAutorizado || sol.monto)).then(() => {
         btnCopyMonto.innerHTML = '<i class="ti ti-check"></i> Copiado';
         setTimeout(() => btnCopyMonto.innerHTML = '<i class="ti ti-copy"></i> Copiar monto', 2000);
       });
@@ -3902,13 +4037,42 @@ const Instalar = {
     header.style.padding = '14px 20px 16px';
     header.innerHTML = `
       <button class="back-btn" id="back-btn"><i class="ti ti-arrow-left"></i></button>
-      <div style="padding-left:36px"><h1>Configuración</h1><p>Firma de Yaretzi</p></div>`;
+      <div style="padding-left:36px"><h1>Configuración</h1><p>WhatsApp y firma</p></div>`;
     el.appendChild(header);
     el.querySelector('#back-btn').onclick = () => App.back('dashboard');
 
     const body = document.createElement('div');
     body.style.padding = '16px';
     body.style.paddingBottom = '80px';
+
+    // WhatsApp del negocio (se muestra al cliente al terminar su solicitud)
+    const waBox = document.createElement('div');
+    waBox.style.cssText = 'background:var(--sand);border-radius:var(--r-lg);padding:14px;margin-bottom:20px';
+    waBox.innerHTML = `
+      <div style="font-size:11px;font-weight:600;color:var(--ink-soft);letter-spacing:.5px;margin-bottom:6px">WHATSAPP DE VARITO</div>
+      <div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px;line-height:1.5">Al terminar su solicitud, el cliente verá un botón para avisarte por WhatsApp a este número. También aparece en el aviso de privacidad como medio de contacto.</div>
+      <div style="display:flex;gap:8px">
+        <input type="tel" id="wa-negocio" maxlength="10" placeholder="10 dígitos" style="flex:1;padding:11px 14px;border-radius:var(--r-md);border:1px solid var(--sand-mid);font-size:14px;font-family:Inter,sans-serif"/>
+        <button class="btn btn-primary btn-sm" id="wa-guardar" style="flex:0 0 auto">Guardar</button>
+      </div>`;
+    body.appendChild(waBox);
+    const waInput = waBox.querySelector('#wa-negocio');
+    if (db) db.collection('configuracion').doc('publico').get().then(d => {
+      if (d.exists && d.data().whatsapp && !waInput.value) waInput.value = d.data().whatsapp;
+    }).catch(() => {});
+    waBox.querySelector('#wa-guardar').onclick = async () => {
+      const tel = waInput.value.replace(/\D/g, '');
+      if (tel && tel.length !== 10) { Toast.error('El número debe tener 10 dígitos'); return; }
+      try {
+        await escribir(db.collection('configuracion').doc('publico').set({ whatsapp: tel }, { merge: true }));
+        Toast.success(tel ? 'WhatsApp guardado' : 'WhatsApp eliminado');
+      } catch (e) { console.error(e); Toast.error('No se pudo guardar'); }
+    };
+
+    const firmaTitulo = document.createElement('div');
+    firmaTitulo.style.cssText = 'font-size:11px;font-weight:600;color:var(--ink-soft);letter-spacing:.5px;margin-bottom:8px';
+    firmaTitulo.textContent = 'FIRMA DE LA ACREEDORA';
+    body.appendChild(firmaTitulo);
 
     // Info
     const info = document.createElement('div');

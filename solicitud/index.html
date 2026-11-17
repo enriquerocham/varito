@@ -78,6 +78,29 @@ body{font-family:'Inter',sans-serif;background:var(--sand);color:var(--ink);min-
 .success-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;gap:16px;flex:1;text-align:center}
 .success-screen h2{font-size:20px;font-weight:600;color:var(--ink)}
 .success-screen p{font-size:14px;color:var(--ink-mid);line-height:1.7}
+
+.step-lbl{text-align:center;font-size:11px;color:var(--ink-soft);padding:0 16px 8px;margin-top:-4px}
+.field input.invalid,.field select.invalid{border-color:var(--danger);background:var(--danger-light)}
+.clabe-ok{font-size:11px;color:var(--green-deep);margin-top:-6px;display:none}
+.clabe-bad{font-size:11px;color:var(--danger);margin-top:-6px;display:none}
+.borrador{background:var(--green-light);border-radius:var(--r-md);padding:10px 12px;font-size:12px;color:var(--green-deep);display:flex;gap:8px;align-items:center;justify-content:space-between}
+.borrador button{background:none;border:none;color:var(--green-deep);font-weight:600;text-decoration:underline;cursor:pointer;font-family:'Inter',sans-serif;font-size:12px}
+.rev-card{background:var(--white);border:0.5px solid var(--sand-mid);border-radius:var(--r-lg);padding:12px 14px}
+.rev-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.rev-head span{font-size:11px;font-weight:700;color:var(--navy);letter-spacing:.8px;text-transform:uppercase}
+.rev-head button{background:none;border:none;color:var(--green-deep);font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+.rev-row{display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:4px 0;color:var(--ink-mid)}
+.rev-row strong{color:var(--ink);text-align:right;font-weight:600}
+.cond-box{background:var(--navy-light);border-radius:var(--r-lg);padding:14px}
+.penal-box{background:var(--warn-light);border-radius:var(--r-md);padding:10px 12px;font-size:12px;color:#7a4a00;line-height:1.6}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--ink);line-height:1.5;cursor:pointer}
+.check input{width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--green)}
+.check a{color:var(--green-deep);font-weight:600}
+.aviso-bg{position:fixed;inset:0;background:rgba(26,35,64,.55);z-index:100;display:flex;align-items:flex-end;justify-content:center}
+.aviso{background:#fff;border-radius:24px 24px 0 0;max-width:480px;width:100%;max-height:88vh;overflow-y:auto;padding:20px 20px 28px;font-size:13px;line-height:1.65;color:var(--ink-mid)}
+.aviso h3{font-size:16px;color:var(--navy);margin-bottom:4px}
+.aviso h4{font-size:12px;color:var(--navy);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.5px}
+.aviso ul{padding-left:18px}
 </style>
 </head>
 <body>
@@ -95,7 +118,9 @@ body{font-family:'Inter',sans-serif;background:var(--sand);color:var(--ink);min-
     <div class="step" id="s3"></div>
     <div class="step" id="s4"></div>
     <div class="step" id="s5"></div>
+    <div class="step" id="s6"></div>
   </div>
+  <div class="step-lbl" id="step-lbl">Paso 1 de 6 · Tus datos</div>
   <div id="main"></div>
 </div>
 
@@ -140,13 +165,44 @@ let fotoIneBackUrl = null;
 let fotoDomUrl = null;
 let hasDrawn = false;
 
+const TITULOS = ['Tus datos','Tu referencia','Documentos','Tu préstamo','Revisa y acepta','Firma'];
 function setStep(n) {
   step = n;
-  [1,2,3,4,5].forEach(i => {
+  [1,2,3,4,5,6].forEach(i => {
     const el = document.getElementById('s'+i);
     if(!el) return;
     el.className = 'step' + (i<n?' done':i===n?' active':'');
   });
+  const lbl = document.getElementById('step-lbl');
+  if(lbl) lbl.textContent = n<=6 ? 'Paso '+n+' de 6 · '+TITULOS[n-1] : '';
+  guardarBorrador();
+  window.scrollTo(0,0);
+}
+
+// ── Guardar el avance en el teléfono (por si se cierra la página o se va la señal) ──
+const CLAVE_BORRADOR = 'varito-solicitud-borrador';
+function guardarBorrador(){
+  if(step>6) return;
+  try {
+    localStorage.setItem(CLAVE_BORRADOR, JSON.stringify({ step, fd, plazoSeleccionado, frecuencia, metodoPago,
+      fotoIneUrl, fotoIneBackUrl, fotoDomUrl, guardado: Date.now() }));
+  } catch(e) {
+    // Si no caben las fotos, guarda al menos los datos escritos
+    try { localStorage.setItem(CLAVE_BORRADOR, JSON.stringify({ step, fd, plazoSeleccionado, frecuencia, metodoPago, guardado: Date.now() })); } catch(e2) {}
+  }
+}
+function borrarBorrador(){ try { localStorage.removeItem(CLAVE_BORRADOR); } catch(e) {} }
+let borradorRecuperado = false;
+function recuperarBorrador(){
+  try {
+    const b = JSON.parse(localStorage.getItem(CLAVE_BORRADOR) || 'null');
+    if(!b || !b.fd) return;
+    if(Date.now() - (b.guardado||0) > 14*86400000) { borrarBorrador(); return; } // más de 14 días: se descarta
+    fd = b.fd; plazoSeleccionado = b.plazoSeleccionado||0; frecuencia = b.frecuencia||'semanal'; metodoPago = b.metodoPago||'transferencia';
+    fotoIneUrl = b.fotoIneUrl||null; fotoIneBackUrl = b.fotoIneBackUrl||null; fotoDomUrl = b.fotoDomUrl||null;
+    step = Math.min(Math.max(1, b.step||1), 5);
+    borradorRecuperado = step > 1 || Object.keys(fd).length > 0;
+  } catch(e) {}
 }
 
 function render() {
@@ -156,8 +212,21 @@ function render() {
   else if(step===2) s2(c);
   else if(step===3) s3(c);
   else if(step===4) s4(c);
-  else if(step===5) s5(c);
+  else if(step===5) s5rev(c);
+  else if(step===6) s5(c);
   else renderSuccess(c);
+  if(borradorRecuperado && step<=6){
+    const b = document.createElement('div');
+    b.className = 'borrador';
+    b.style.margin = '12px 16px 0';
+    b.innerHTML = '<span><i class="ti ti-history"></i> Continuamos donde te quedaste.</span><button type="button">Empezar de nuevo</button>';
+    b.querySelector('button').onclick = () => {
+      if(!confirm('¿Borrar lo que llevas capturado y empezar de nuevo?')) return;
+      borrarBorrador(); fd = {}; plazoSeleccionado = 0; frecuencia = 'semanal'; metodoPago = 'transferencia';
+      fotoIneUrl = fotoIneBackUrl = fotoDomUrl = null; borradorRecuperado = false; setStep(1); render();
+    };
+    c.insertBefore(b, c.firstChild);
+  }
 }
 
 // ── Step 1: Datos personales ──
@@ -200,11 +269,18 @@ function s1(c) {
     const cp = val('cp');
     const colonia = val('colonia');
     const ciudad = val('ciudad');
-    if(!nombre||!telefono||!fechaNacimiento||!ine||!calle||!numExt||!cp||!colonia||!ciudad){
-      showErr('err1','Completa todos los campos obligatorios.'); return;
-    }
-    if(telefono.length!==10){showErr('err1','El teléfono debe tener 10 dígitos.'); return;}
-    Object.assign(fd,{nombre,telefono,fechaNacimiento,ine,calle,numExt,numInt:val('numInt'),cp,colonia,ciudad});
+    limpiarInvalidos();
+    const faltan = [['nombre',nombre],['telefono',telefono],['fechaNacimiento',fechaNacimiento],['ine',ine],['calle',calle],['numExt',numExt],['cp',cp],['colonia',colonia],['ciudad',ciudad]].filter(x=>!x[1]).map(x=>x[0]);
+    if(faltan.length){ showErr('err1','Completa los campos marcados en rojo.', faltan); return; }
+    const tel = telefono.replace(/\D/g,'');
+    if(tel.length!==10){showErr('err1','El teléfono debe tener 10 dígitos.', ['telefono']); return;}
+    if(nombre.trim().split(/\s+/).length<2){showErr('err1','Escribe tu nombre completo con apellidos.', ['nombre']); return;}
+    const edad = calcularEdad(fechaNacimiento);
+    if(edad<18){showErr('err1','Debes ser mayor de 18 años para solicitar un préstamo.', ['fechaNacimiento']); return;}
+    if(edad>100){showErr('err1','Revisa tu fecha de nacimiento.', ['fechaNacimiento']); return;}
+    if(!/^[A-Z0-9]{18}$/.test(ine.replace(/\s/g,''))){showErr('err1','La clave de elector tiene 18 letras y números (viene al frente de tu INE).', ['ine']); return;}
+    if(!/^\d{5}$/.test(cp)){showErr('err1','El código postal debe tener 5 dígitos.', ['cp']); return;}
+    Object.assign(fd,{nombre,telefono:tel,fechaNacimiento,ine:ine.replace(/\s/g,''),calle,numExt,numInt:val('numInt'),cp,colonia,ciudad});
     setStep(2); render();
   };
 }
@@ -246,10 +322,14 @@ function s2(c) {
     const refCp = val('refCp');
     const refColonia = val('refColonia');
     const refCiudad = val('refCiudad');
-    if(!refNombre||!refParentesco||!refTelefono||!refCalle||!refNumExt||!refCp||!refColonia||!refCiudad){
-      showErr('err2','Completa todos los campos de la referencia.'); return;
-    }
-    Object.assign(fd,{refNombre,refParentesco,refTelefono,refCalle,refNumExt,refNumInt:val('refNumInt'),refCp,refColonia,refCiudad,
+    limpiarInvalidos();
+    const faltan = [['refNombre',refNombre],['refParentesco',refParentesco],['refTelefono',refTelefono],['refCalle',refCalle],['refNumExt',refNumExt],['refCp',refCp],['refColonia',refColonia],['refCiudad',refCiudad]].filter(x=>!x[1]).map(x=>x[0]);
+    if(faltan.length){ showErr('err2','Completa los campos marcados en rojo.', faltan); return; }
+    const refTel = refTelefono.replace(/\D/g,'');
+    if(refTel.length!==10){showErr('err2','El teléfono de tu referencia debe tener 10 dígitos.', ['refTelefono']); return;}
+    if(refTel===fd.telefono){showErr('err2','El teléfono de tu referencia debe ser distinto al tuyo.', ['refTelefono']); return;}
+    if(!/^\d{5}$/.test(refCp)){showErr('err2','El código postal debe tener 5 dígitos.', ['refCp']); return;}
+    Object.assign(fd,{refNombre,refParentesco,refTelefono:refTel,refCalle,refNumExt,refNumInt:val('refNumInt'),refCp,refColonia,refCiudad,
       refDireccion:[refCalle,'#'+refNumExt,val('refNumInt')?'Int.'+val('refNumInt'):'',refColonia,refCp,refCiudad].filter(Boolean).join(', ')});
     setStep(3); render();
   };
@@ -334,9 +414,9 @@ function s3(c) {
   setupPhoto('ine-front-file', ineZoneFront, inePreviewFront, 'ine-front-img', v => fotoIneUrl = v);
   setupPhoto('ine-back-file', ineZoneBack, inePreviewBack, 'ine-back-img', v => fotoIneBackUrl = v);
   setupPhoto('dom-file', domZone, domPreview, 'dom-img', v => fotoDomUrl = v);
-  document.getElementById('ine-front-rm').onclick = () => { fotoIneUrl=null; inePreviewFront.style.display='none'; ineZoneFront.style.display='block'; };
-  document.getElementById('ine-back-rm').onclick = () => { fotoIneBackUrl=null; inePreviewBack.style.display='none'; ineZoneBack.style.display='block'; };
-  document.getElementById('dom-rm').onclick = () => { fotoDomUrl=null; domPreview.style.display='none'; domZone.style.display='block'; };
+  document.getElementById('ine-front-rm').onclick = () => { fotoIneUrl=null; guardarBorrador(); inePreviewFront.style.display='none'; ineZoneFront.style.display='block'; };
+  document.getElementById('ine-back-rm').onclick = () => { fotoIneBackUrl=null; guardarBorrador(); inePreviewBack.style.display='none'; ineZoneBack.style.display='block'; };
+  document.getElementById('dom-rm').onclick = () => { fotoDomUrl=null; guardarBorrador(); domPreview.style.display='none'; domZone.style.display='block'; };
 
   btnNext.onclick = () => {
     if(!fotoIneUrl){showErr('err3','Adjunta la foto del frente de tu INE.'); return;}
@@ -353,7 +433,7 @@ function s4(c) {
   appendLbl(sec, 'Tu solicitud de crédito');
   appendInfo(sec, 'Si eres cliente nuevo, los préstamos mayores a $2,000 están sujetos a revisión. Puedes solicitarlos, pero su aprobación quedará a consideración de Varito.');
 
-  appendField(sec, 'monto', 'Monto a solicitar *', 'number', '$0.00', fd.monto||'', {min:'100',step:'100'});
+  appendField(sec, 'monto', 'Monto a solicitar *', 'number', '$0.00', fd.monto||'', {min:'100',max:String(MONTO_MAXIMO),step:'100',inputmode:'numeric'});
 
   const limiteNote = document.createElement('div');
   limiteNote.id = 'limite-note';
@@ -523,7 +603,7 @@ function s4(c) {
   bancoField.innerHTML = '<label>Banco *</label>';
   const bancoSel = document.createElement('select');
   bancoSel.id = 'banco';
-  ['','BBVA','Banorte','Santander','Citibanamex','HSBC','Scotiabank','Banco Azteca','BanCoppel','Spin by OXXO','Nu','Otro'].forEach(b => {
+  ['',...Object.values(BANCOS_CLABE).filter((b,i,a)=>a.indexOf(b)===i),'Otro'].forEach(b => {
     const opt = document.createElement('option');
     opt.value = b; opt.textContent = b || '— Selecciona tu banco —';
     if(fd.banco===b) opt.selected = true;
@@ -534,8 +614,10 @@ function s4(c) {
   appendField(bankWrap, 'clabe', 'CLABE interbancaria (18 dígitos) *', 'text', '18 dígitos de tu CLABE', fd.clabe||'', {maxlength:'18', inputmode:'numeric'});
   const clabeHint = document.createElement('div');
   clabeHint.style.cssText = 'font-size:10px;color:var(--ink-soft);margin-top:-8px';
-  clabeHint.textContent = 'La encuentras en tu app bancaria. Verifica que sea correcta.';
+  clabeHint.textContent = 'La encuentras en tu app bancaria. Al escribirla detectamos tu banco.';
   bankWrap.appendChild(clabeHint);
+  const clabeOk = document.createElement('div'); clabeOk.className = 'clabe-ok'; bankWrap.appendChild(clabeOk);
+  const clabeBad = document.createElement('div'); clabeBad.className = 'clabe-bad'; bankWrap.appendChild(clabeBad);
   sec.appendChild(bankWrap);
 
   const efectivoNote = document.createElement('div');
@@ -565,13 +647,32 @@ function s4(c) {
 
   const montoInput = document.getElementById('monto');
   if(montoInput) montoInput.addEventListener('input', updateCalc);
+  // CLABE: detecta el banco y revisa el dígito verificador mientras se escribe
+  const clabeInput = document.getElementById('clabe');
+  const revisarClabe = () => {
+    const v = clabeInput.value.replace(/\D/g,'').slice(0,18);
+    if(clabeInput.value !== v) clabeInput.value = v;
+    clabeOk.style.display = clabeBad.style.display = 'none';
+    clabeInput.classList.remove('invalid');
+    if(v.length>=3){
+      const banco = BANCOS_CLABE[v.slice(0,3)];
+      if(banco){ bancoSel.value = banco; }
+    }
+    if(v.length===18){
+      if(clabeValida(v)){ clabeOk.innerHTML = '<i class="ti ti-circle-check"></i> CLABE correcta'+(BANCOS_CLABE[v.slice(0,3)]?' · '+BANCOS_CLABE[v.slice(0,3)]:''); clabeOk.style.display='block'; }
+      else { clabeBad.innerHTML = '<i class="ti ti-alert-circle"></i> Esta CLABE no es válida. Revisa que los 18 dígitos estén bien.'; clabeBad.style.display='block'; clabeInput.classList.add('invalid'); }
+    }
+  };
+  if(clabeInput){ clabeInput.addEventListener('input', revisarClabe); if(clabeInput.value) revisarClabe(); }
   renderPlazos();
   if(fd.monto) setTimeout(updateCalc, 50);
 
   btnNext.onclick = () => {
     const montoEl = document.getElementById('monto');
     const monto = montoEl ? parseFloat(montoEl.value) : 0;
-    if(!monto||monto<100){showErr('err4','Ingresa un monto válido (mínimo $100).');return;}
+    limpiarInvalidos();
+    if(!monto||monto<100){showErr('err4','Ingresa un monto válido (mínimo $100).', ['monto']);return;}
+    if(monto>MONTO_MAXIMO){showErr('err4','El monto máximo que puedes solicitar es '+fmtC(MONTO_MAXIMO)+'.', ['monto']);return;}
     if(!plazoSeleccionado){
       showErr('err4','Selecciona el número de '+(frecuencia==='semanal'?'semanas':'quincenas')+'.');
       return;
@@ -579,8 +680,9 @@ function s4(c) {
     if(metodoPago==='transferencia'){
       const banco = val('banco');
       const clabe = val('clabe');
-      if(!banco){showErr('err4','Selecciona tu banco.');return;}
-      if(!/^\d{18}$/.test(clabe)){showErr('err4','La CLABE debe tener exactamente 18 dígitos.');return;}
+      if(!/^\d{18}$/.test(clabe)){showErr('err4','La CLABE debe tener exactamente 18 dígitos.', ['clabe']);return;}
+      if(!clabeValida(clabe)){showErr('err4','La CLABE no es válida. Revisa que los 18 dígitos estén bien.', ['clabe']);return;}
+      if(!banco){showErr('err4','Selecciona tu banco.', ['banco']);return;}
       fd.banco = banco; fd.clabe = clabe;
     } else {
       fd.banco = ''; fd.clabe = '';
@@ -602,12 +704,135 @@ function s4(c) {
   };
 }
 
-// ── Step 5: Firma ──
+
+// ── Reglas del préstamo (mantener igual que en la app de administración) ──
+const MONTO_MAXIMO = 10000;
+const PENALIZACION_DIARIA = 5; // % del capital por cada día de atraso
+const VERSION_AVISO = '2026-11';
+let WA_NEGOCIO = '';
+db.collection('configuracion').doc('publico').get()
+  .then(d => { if(d.exists && d.data().whatsapp) WA_NEGOCIO = String(d.data().whatsapp).replace(/\D/g,''); })
+  .catch(() => {});
+
+// Banco según los 3 primeros dígitos de la CLABE
+const BANCOS_CLABE = {
+  '002':'Citibanamex','012':'BBVA','014':'Santander','021':'HSBC','030':'BanBajío','036':'Inbursa',
+  '044':'Scotiabank','058':'Banregio','062':'Afirme','072':'Banorte','127':'Banco Azteca','137':'BanCoppel',
+  '166':'Banco del Bienestar','638':'Nu','646':'STP','722':'Mercado Pago','728':'Spin by OXXO',
+};
+// Dígito verificador de la CLABE (pesos 3, 7, 1)
+function clabeValida(clabe){
+  if(!/^\d{18}$/.test(clabe)) return false;
+  const pesos=[3,7,1]; let suma=0;
+  for(let i=0;i<17;i++) suma += (Number(clabe[i])*pesos[i%3])%10;
+  return (10 - suma%10)%10 === Number(clabe[17]);
+}
+function calcularEdad(fecha){
+  const n=new Date(fecha+'T00:00:00'), h=new Date();
+  let e=h.getFullYear()-n.getFullYear();
+  if(h.getMonth()<n.getMonth() || (h.getMonth()===n.getMonth() && h.getDate()<n.getDate())) e--;
+  return e;
+}
+function limpiarInvalidos(){ document.querySelectorAll('.invalid').forEach(el=>el.classList.remove('invalid')); }
+function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+
+// Condiciones del préstamo solicitado
+function condiciones(){
+  const monto = Number(fd.monto)||0, plazo = Number(fd.plazo)||1, frec = fd.frecuencia||'semanal';
+  const interes = getInteres(plazo, frec);
+  const total = Math.round(monto*(1+interes/100)*100)/100;
+  const cuota = Math.round((total/plazo)*100)/100;
+  const ultima = Math.round((total-cuota*(plazo-1))*100)/100;
+  const cuotas = [];
+  for(let i=1;i<=plazo;i++){ const f=new Date(today()+'T00:00:00'); f.setDate(f.getDate()+getDias(frec)*i); cuotas.push({num:i, fecha:ymd(f), monto:i===plazo?ultima:cuota}); }
+  const penalDia = Math.round(monto*PENALIZACION_DIARIA)/100;
+  return { monto, plazo, frec, interes, total, cuota, ultima, cuotas, penalDia };
+}
+
+// ── Aviso de privacidad (BORRADOR: revisar con un especialista antes de usarlo como definitivo) ──
+function abrirAviso(){
+  const bg=document.createElement('div'); bg.className='aviso-bg';
+  const contacto = WA_NEGOCIO ? 'al WhatsApp <strong>'+WA_NEGOCIO.replace(/(\d{2})(\d{4})(\d{4})/,'$1 $2 $3')+'</strong>' : 'por WhatsApp al número desde el que te contactamos';
+  bg.innerHTML='<div class="aviso">'+
+    '<h3>Aviso de privacidad</h3><div style="font-size:11px;color:var(--ink-soft)">Versión '+VERSION_AVISO+'</div>'+
+    '<h4>Responsable</h4><p><strong>Yaretzi Dalet Gutiérrez Castañeda</strong>, quien opera con el nombre comercial <strong>Varito</strong>, con domicilio en García, Nuevo León, es responsable del tratamiento de tus datos personales.</p>'+
+    '<h4>Datos que recabamos</h4><ul><li>Identificación: nombre, fecha de nacimiento, clave de elector y fotografías de tu credencial INE.</li><li>Contacto y domicilio: teléfono, dirección y comprobante de domicilio.</li><li>Datos de una referencia personal que tú nos proporcionas; al hacerlo declaras contar con su autorización.</li><li>Datos bancarios (banco y CLABE) para depositarte el préstamo.</li><li>Tu firma digitalizada.</li></ul><p>No solicitamos datos personales sensibles.</p>'+
+    '<h4>Para qué los usamos</h4><ul><li>Verificar tu identidad y evaluar tu solicitud.</li><li>Formalizar el préstamo, incluido el pagaré, y entregarte el dinero.</li><li>Administrar tus pagos, enviarte recibos y recordatorios, y realizar la cobranza.</li></ul>'+
+    '<h4>Con quién los compartimos</h4><p>No vendemos ni compartimos tus datos con terceros, salvo cuando lo requiera una autoridad competente o sea necesario para hacer valer nuestros derechos derivados del préstamo, incluida la cobranza judicial.</p>'+
+    '<h4>Tus derechos</h4><p>Puedes solicitar el acceso, rectificación o cancelación de tus datos, oponerte a su uso o revocar tu consentimiento, escribiéndonos '+contacto+'. Te responderemos en un plazo máximo de 20 días hábiles.</p>'+
+    '<h4>Conservación</h4><p>Conservamos tus datos mientras exista una relación contigo y por el tiempo que exijan las leyes aplicables.</p>'+
+    '<h4>Cambios</h4><p>Cualquier cambio a este aviso se publicará en esta misma página.</p>'+
+    '<button class="btn btn-primary" style="margin-top:18px">Entendido</button></div>';
+  bg.querySelector('button').onclick=()=>bg.remove();
+  bg.onclick=e=>{ if(e.target===bg) bg.remove(); };
+  document.body.appendChild(bg);
+}
+
+// ── Paso 5: Revisa y acepta ──
+function s5rev(c){
+  const k = condiciones();
+  const sec=document.createElement('div'); sec.className='section';
+  appendLbl(sec,'Revisa tu solicitud');
+  appendInfo(sec,'Verifica que todo esté correcto. Puedes editar cualquier sección antes de firmar.');
+  const tarjeta=(titulo, paso, filas)=>{
+    const d=document.createElement('div'); d.className='rev-card';
+    d.innerHTML='<div class="rev-head"><span>'+titulo+'</span><button type="button"><i class="ti ti-pencil"></i> Editar</button></div>'+
+      filas.filter(f=>f[1]).map(f=>'<div class="rev-row"><span>'+f[0]+'</span><strong>'+esc(f[1])+'</strong></div>').join('');
+    d.querySelector('button').onclick=()=>{ setStep(paso); render(); };
+    sec.appendChild(d);
+  };
+  tarjeta('Tus datos',1,[['Nombre',fd.nombre],['Teléfono',fd.telefono],['Nacimiento',fmtD(fd.fechaNacimiento)],['Clave de elector',fd.ine],
+    ['Domicilio',[fd.calle,fd.numExt?'#'+fd.numExt:'',fd.numInt?'Int. '+fd.numInt:'',fd.colonia,fd.cp,fd.ciudad].filter(Boolean).join(', ')]]);
+  tarjeta('Tu referencia',2,[['Nombre',fd.refNombre],['Parentesco',fd.refParentesco],['Teléfono',fd.refTelefono]]);
+  tarjeta('Documentos',3,[['INE','Frente y reverso ✓'],['Comprobante de domicilio','✓']]);
+  tarjeta('Entrega del dinero',4,[['Método',fd.metodoEntrega==='efectivo'?'Efectivo':'Transferencia'],['Banco',fd.banco],['CLABE',fd.clabe]]);
+
+  // Condiciones del préstamo
+  const unidad = k.frec==='semanal'?'semanales':'quincenales';
+  const cond=document.createElement('div'); cond.className='cond-box';
+  cond.innerHTML='<div class="rev-head"><span>Condiciones del préstamo</span><button type="button"><i class="ti ti-pencil"></i> Editar</button></div>'+
+    '<div class="rev-row"><span>Monto solicitado</span><strong>'+fmtC(k.monto)+'</strong></div>'+
+    '<div class="rev-row"><span>Interés</span><strong>'+k.interes+'% · '+fmtC(k.total-k.monto)+'</strong></div>'+
+    '<div class="rev-row"><span>Total a pagar</span><strong>'+fmtC(k.total)+'</strong></div>'+
+    '<div class="rev-row"><span>Pagos</span><strong>'+k.plazo+' '+unidad+' de '+fmtC(k.cuota)+(k.ultima!==k.cuota?' (último '+fmtC(k.ultima)+')':'')+'</strong></div>'+
+    '<div class="rev-row"><span>Primer pago</span><strong>'+fmtD(k.cuotas[0].fecha)+'</strong></div>'+
+    '<div class="rev-row"><span>Último pago</span><strong>'+fmtD(k.cuotas[k.cuotas.length-1].fecha)+'</strong></div>'+
+    '<div style="font-size:11px;color:var(--ink-soft);margin-top:6px">Las fechas son estimadas y se confirman el día que se autoriza el préstamo.</div>';
+  cond.querySelector('button').onclick=()=>{ setStep(4); render(); };
+  sec.appendChild(cond);
+
+  const pen=document.createElement('div'); pen.className='penal-box';
+  pen.innerHTML='<strong><i class="ti ti-alert-triangle"></i> Pagos atrasados.</strong> Si una cuota no se paga en su fecha, se cobra una penalización del <strong>'+PENALIZACION_DIARIA+'% del monto prestado por cada día de atraso</strong> ('+fmtC(k.penalDia)+' diarios en tu caso), hasta ponerte al corriente. El atraso en cualquier pago permite exigir el total del adeudo de forma anticipada. Este préstamo se documenta con un pagaré firmado por ti.';
+  sec.appendChild(pen);
+
+  const ch1=document.createElement('label'); ch1.className='check';
+  ch1.innerHTML='<input type="checkbox" id="acepta-cond"'+(fd._aceptaCond?' checked':'')+'/><span>Leí y acepto las condiciones del préstamo, incluida la penalización por pagos atrasados.</span>';
+  sec.appendChild(ch1);
+  const ch2=document.createElement('label'); ch2.className='check';
+  ch2.innerHTML='<input type="checkbox" id="acepta-priv"'+(fd._aceptaPriv?' checked':'')+'/><span>Leí el <a href="#" id="ver-aviso">aviso de privacidad</a> y autorizo el uso de mis datos para este préstamo.</span>';
+  sec.appendChild(ch2);
+  ch2.querySelector('#ver-aviso').onclick=e=>{ e.preventDefault(); abrirAviso(); };
+
+  appendErr(sec,'err5r');
+  const btnRow=document.createElement('div'); btnRow.className='btn-row';
+  appendBtn(btnRow,'← Atrás','btn-secondary',()=>{setStep(4);render();});
+  const btnNext=appendBtn(btnRow,'Continuar a firmar →','btn-primary',null);
+  sec.appendChild(btnRow);
+  c.appendChild(sec);
+  btnNext.onclick=()=>{
+    const a1=document.getElementById('acepta-cond').checked, a2=document.getElementById('acepta-priv').checked;
+    if(!a1||!a2){ showErr('err5r','Para continuar, marca las dos casillas de aceptación.'); return; }
+    fd._aceptaCond=true; fd._aceptaPriv=true;
+    setStep(6); render();
+  };
+}
+
+// ── Step 6: Firma ──
 function s5(c) {
   const sec = document.createElement('div');
   sec.className = 'section';
   appendLbl(sec, 'Firma digital');
-  appendInfo(sec, 'Al firmar confirmas que tus datos son verdaderos y aceptas los términos del préstamo.');
+  appendInfo(sec, 'Al firmar confirmas que tus datos son verdaderos y que aceptas las condiciones que revisaste en el paso anterior.');
 
   const canvasWrap = document.createElement('div');
   canvasWrap.className = 'canvas-wrap';
@@ -634,7 +859,7 @@ function s5(c) {
   const err = appendErr(sec, 'err5');
   const btnRow = document.createElement('div');
   btnRow.className = 'btn-row';
-  appendBtn(btnRow,'← Atrás','btn-secondary',()=>{setStep(4);render();});
+  appendBtn(btnRow,'← Atrás','btn-secondary',()=>{setStep(5);render();});
   const btnEnviar = appendBtn(btnRow,'Enviar solicitud','btn-success',null);
   btnEnviar.innerHTML = '<i class="ti ti-send"></i> Enviar solicitud';
   sec.appendChild(btnRow);
@@ -671,8 +896,14 @@ function s5(c) {
     btnEnviar.innerHTML='<i class="ti ti-loader"></i> Enviando...';
     try {
       firmaUrl = await compressImage(await recortarFirma(canvas.toDataURL('image/png')), 600, 0.85);
-      await db.collection('solicitudes').add({
-        ...fd,
+      const k = condiciones();
+      const ahora = new Date().toISOString();
+      const { _aceptaCond, _aceptaPriv, ...datos } = fd;
+      const ref = await db.collection('solicitudes').add({
+        ...datos,
+        interes: k.interes,
+        aceptaCondiciones: { fecha: ahora, monto: k.monto, interes: k.interes, total: k.total, cuota: k.cuota, numeroPagos: k.plazo, frecuencia: k.frec, penalizacionDiariaPct: PENALIZACION_DIARIA },
+        aceptaPrivacidad: { fecha: ahora, version: VERSION_AVISO },
         firmaClienteUrl: firmaUrl,
         fotoIneUrl: fotoIneUrl,
         fotoIneBackUrl: fotoIneBackUrl,
@@ -681,6 +912,9 @@ function s5(c) {
         createdAt: new Date().toISOString(),
       });
       document.getElementById('steps-bar').style.display='none';
+      const lbl=document.getElementById('step-lbl'); if(lbl) lbl.style.display='none';
+      folioSolicitud = 'SOL-' + ref.id.slice(0,6).toUpperCase();
+      borrarBorrador(); borradorRecuperado = false;
       step=99; render();
     } catch(e) {
       console.error(e);
@@ -691,14 +925,25 @@ function s5(c) {
   });
 }
 
+let folioSolicitud = '';
 function renderSuccess(c) {
   const s = document.createElement('div');
   s.className = 'success-screen';
   s.innerHTML =
     '<img src="https://enriquerocham.github.io/varito/LOGO_CUADRADO.png" style="width:90px;height:90px;object-fit:contain;border-radius:16px" onerror="this.style.display=\'none\'"/>'+
     '<h2>¡Solicitud enviada! 🎉</h2>'+
-    '<p>Tu solicitud fue recibida correctamente.<br/><br/>En breve recibirás un mensaje de <strong>WhatsApp</strong> confirmando si tu préstamo fue autorizado.<br/><br/>Gracias por confiar en <strong>Varito</strong>. 🪙</p>';
+    (folioSolicitud ? '<div style="font-family:monospace;font-size:15px;font-weight:700;color:var(--navy);background:var(--navy-light);padding:6px 14px;border-radius:999px">'+folioSolicitud+'</div>' : '')+
+    '<p>Recibimos tu solicitud. <strong>Qué sigue:</strong></p>'+
+    '<div style="text-align:left;font-size:13px;color:var(--ink-mid);line-height:1.8;max-width:320px">'+
+      '1. Revisamos tus datos y documentos.<br/>2. Podemos llamar a tu referencia.<br/>3. Te avisamos por <strong>WhatsApp</strong> si tu préstamo fue autorizado, normalmente en menos de 24 horas.</div>'+
+    (WA_NEGOCIO ? '<button class="btn btn-success" id="avisar-wa" style="max-width:320px"><i class="ti ti-brand-whatsapp"></i> Avisar a Varito por WhatsApp</button>' : '')+
+    '<p style="font-size:13px">Gracias por confiar en <strong>Varito</strong>. 🪙</p>';
   c.appendChild(s);
+  const b = s.querySelector('#avisar-wa');
+  if(b) b.onclick = () => {
+    const msg = 'Hola, acabo de enviar mi solicitud de préstamo'+(folioSolicitud?' ('+folioSolicitud+')':'')+' a nombre de *'+(fd.nombre||'')+'* por '+fmtC(Number(fd.monto)||0)+'. Quedo atento(a). ¡Gracias!';
+    window.open('https://wa.me/52'+WA_NEGOCIO+'?text='+encodeURIComponent(msg), '_blank');
+  };
 }
 
 // ── DOM helpers ──
@@ -707,7 +952,14 @@ function appendLbl(parent,text){const d=document.createElement('div');d.classNam
 function appendInfo(parent,text){const d=document.createElement('div');d.className='info-box';d.innerHTML='<i class="ti ti-info-circle"></i><span>'+text+'</span>';parent.appendChild(d);return d;}
 function appendGrid(parent){const g=document.createElement('div');g.className='grid2';parent.appendChild(g);return g;}
 function appendErr(parent,id){const p=document.createElement('p');p.id=id;p.className='error-msg';parent.appendChild(p);return p;}
-function showErr(id,msg){const el=document.getElementById(id);if(el){el.textContent=msg;el.style.display='block';el.scrollIntoView({behavior:'smooth',block:'center'});}}
+function showErr(id,msg,campos){
+  const el=document.getElementById(id);
+  (campos||[]).forEach(f=>{ const i=document.getElementById(f); if(i){ i.classList.add('invalid'); i.addEventListener('input',()=>i.classList.remove('invalid'),{once:true}); } });
+  const primero = campos && campos.length ? document.getElementById(campos[0]) : null;
+  if(el){el.textContent=msg;el.style.display='block';}
+  if(primero){ primero.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>{ try{primero.focus({preventScroll:true});}catch(e){} },300); }
+  else if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); }
+}
 function appendField(parent,id,label,type,placeholder,value,attrs){
   const f=document.createElement('div');f.className='field';
   const l=document.createElement('label');l.textContent=label;f.appendChild(l);
@@ -740,6 +992,7 @@ function setupPhoto(fileId,zone,preview,imgId,setter){
       // Compress to max 800px wide, 0.7 quality (~50-80KB)
       const compressed = await compressImage(ev.target.result, 800, 0.7);
       setter(compressed);
+      guardarBorrador();
       document.getElementById(imgId).src=compressed;
       preview.style.display='block';
       zone.style.display='none';
@@ -798,6 +1051,8 @@ function compressImage(dataUrl, maxWidth, quality) {
   });
 }
 
+recuperarBorrador();
+setStep(step);
 render();
 </script>
 </body>

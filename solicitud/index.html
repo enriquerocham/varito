@@ -616,10 +616,10 @@ function s5(c) {
   canvasLbl.textContent = 'DIBUJA TU FIRMA CON EL DEDO';
   const canvas = document.createElement('canvas');
   canvas.id = 'firma-canvas';
-  canvas.height = 160;
+  canvas.height = 220;
   const canvasHint = document.createElement('div');
   canvasHint.className = 'canvas-hint';
-  canvasHint.textContent = 'Usa el dedo o stylus para firmar';
+  canvasHint.textContent = 'Firma con el dedo sin salirte del recuadro';
   canvasWrap.appendChild(canvasLbl);
   canvasWrap.appendChild(canvas);
   canvasWrap.appendChild(canvasHint);
@@ -670,7 +670,7 @@ function s5(c) {
     btnEnviar.disabled=true;
     btnEnviar.innerHTML='<i class="ti ti-loader"></i> Enviando...';
     try {
-      firmaUrl = await compressImage(canvas.toDataURL('image/png'), 600, 0.85);
+      firmaUrl = await compressImage(await recortarFirma(canvas.toDataURL('image/png')), 600, 0.85);
       await db.collection('solicitudes').add({
         ...fd,
         firmaClienteUrl: firmaUrl,
@@ -745,6 +745,39 @@ function setupPhoto(fileId,zone,preview,imgId,setter){
       zone.style.display='none';
     };
     reader.readAsDataURL(file);
+  });
+}
+
+// Recorta el espacio en blanco alrededor de la firma
+function recortarFirma(dataUrl, margen = 10) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0);
+        const d = ctx.getImageData(0, 0, c.width, c.height).data;
+        let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+        for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+          const i = (y * c.width + x) * 4;
+          if (d[i] < 200 || d[i+1] < 200 || d[i+2] < 200) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
+        if (x1 < 0) return resolve(dataUrl);
+        x0 = Math.max(0, x0 - margen); y0 = Math.max(0, y0 - margen);
+        x1 = Math.min(c.width - 1, x1 + margen); y1 = Math.min(c.height - 1, y1 + margen);
+        const o = document.createElement('canvas');
+        o.width = x1 - x0 + 1; o.height = y1 - y0 + 1;
+        const oc = o.getContext('2d');
+        oc.fillStyle = '#fff'; oc.fillRect(0, 0, o.width, o.height);
+        oc.drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height);
+        resolve(o.toDataURL('image/png'));
+      } catch (e) { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
   });
 }
 

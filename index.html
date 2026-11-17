@@ -379,6 +379,44 @@ const leerImagen = (file, maxLado, calidad) => new Promise((resolve, reject) => 
   reader.readAsDataURL(file);
 });
 
+// Recorta el espacio en blanco alrededor de una firma (deja un margen pequeño).
+// Así la firma se ve más grande y centrada en pagarés y fichas.
+const recortarFirma = (dataUrl, margen = 10) => new Promise(resolve => {
+  if (!dataUrl || !String(dataUrl).startsWith('data:')) return resolve(dataUrl);
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0);
+      const { data, width, height } = ctx.getImageData(0, 0, c.width, c.height);
+      let x0 = width, y0 = height, x1 = -1, y1 = -1;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          if (data[i] < 200 || data[i + 1] < 200 || data[i + 2] < 200) {
+            if (x < x0) x0 = x; if (x > x1) x1 = x;
+            if (y < y0) y0 = y; if (y > y1) y1 = y;
+          }
+        }
+      }
+      if (x1 < 0) return resolve(dataUrl);
+      x0 = Math.max(0, x0 - margen); y0 = Math.max(0, y0 - margen);
+      x1 = Math.min(width - 1, x1 + margen); y1 = Math.min(height - 1, y1 + margen);
+      const out = document.createElement('canvas');
+      out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
+      const o = out.getContext('2d');
+      o.fillStyle = '#fff'; o.fillRect(0, 0, out.width, out.height);
+      o.drawImage(c, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+      resolve(out.toDataURL('image/png'));
+    } catch (e) { resolve(dataUrl); }
+  };
+  img.onerror = () => resolve(dataUrl);
+  img.src = dataUrl;
+});
+
 const firebaseConfig = {
   apiKey: "AIzaSyCDYns_aIfO87mtln-ORna-9sL_7Xm1IBk",
   authDomain: "varito-46d22.firebaseapp.com",
@@ -431,7 +469,7 @@ const Store = (() => {
       if (pendientes.size === 0 && !loaded) {
         loaded = true;
         listeners.forEach(fn => fn());
-        repararFotosClientes();
+        repararFotosClientes().then(corregirEstados);
       }
     };
     const onErr = (key) => (e) => { console.error('Error cargando ' + key, e); listo(key); };
@@ -475,6 +513,28 @@ const Store = (() => {
   };
 
   const pagosDe = (prestamoId) => state.pagos.filter(pg => pg.prestamoId === prestamoId);
+
+  // La versión anterior a veces contaba un pago dos veces y marcaba como "liquidado"
+  // un préstamo al que todavía le faltaba una cuota. Al abrir la app se revisa cada
+  // préstamo y se corrige su estado según los pagos que realmente tiene.
+  let estadosCorregidos = false;
+  const corregirEstados = async () => {
+    if (estadosCorregidos || !db) return;
+    estadosCorregidos = true;
+    for (const p of state.prestamos) {
+      const pagos = pagosDe(p.id);
+      const cuotasPagadas = new Set(pagos.map(pg => pg.numCuota)).size;
+      const pagado = pagos.reduce((s, pg) => s + (Number(pg.monto) || 0), 0);
+      const liquidado = cuotasPagadas >= Number(p.plazo) || pagado >= p.totalConInteres - 0.009;
+      const estado = liquidado ? 'liquidado' : 'activo';
+      if (p.estado !== estado) {
+        try {
+          await db.collection('prestamos').doc(p.id).update({ estado });
+          console.log('Estado corregido', Fmt.folioPagare(p.folioNum), p.estado, '→', estado);
+        } catch (e) { console.warn('No se pudo corregir el estado de', p.id, e); }
+      }
+    }
+  };
 
   // Cuotas de un préstamo, con su estado y penalización al día de hoy
   const tablaDe = (prestamo) => {
@@ -924,7 +984,13 @@ const PDF = {
     }
   },
 
-  generarPagare: (prestamo, cliente) => {
+  generarPagare: async (prestamo, cliente) => {
+    // La ventana se abre en el momento del clic (si no, el navegador la bloquea)
+    const w = window.open('', '_blank');
+    if (!w) { Toast.error('Permite las ventanas emergentes para ver el documento'); return; }
+    try { w.document.write('<p style="font-family:sans-serif;padding:24px;color:#666">Preparando pagaré…</p>'); } catch (e) {}
+    const firmaYaretzi = await recortarFirma(Store.getFirmaYaretzi());
+    const firmaCliente = await recortarFirma(cliente.firmaClienteUrl || cliente.firmaUrl || prestamo.firmaClienteUrl || '');
     const tabla = Store.getTableraAmortizacion(prestamo);
     const E = Fmt.esc;
     const domicilio = E(Store.getDomicilioCompleto(cliente));
@@ -934,14 +1000,13 @@ const PDF = {
     const fechaLarga = 'a los ' + fd + ' días del mes de ' + meses[fm - 1] + ' de ' + fy;
     const nombreCliente = E(cliente.nombre);
 
-    const firmaYaretziHtml = Store.getFirmaYaretzi()
-      ? '<img src="' + Store.getFirmaYaretzi() + '" style="height:52px;width:auto;max-width:160px;object-fit:contain;display:block;margin:0 auto 4px"/>'
-      : '<div style="height:52px"></div>';
+    const firmaYaretziHtml = firmaYaretzi
+      ? '<img src="' + firmaYaretzi + '" class="firma"/>'
+      : '<div style="height:80px"></div>';
 
-    const firmaClienteUrl = cliente.firmaClienteUrl || cliente.firmaUrl || prestamo.firmaClienteUrl || '';
-    const firmaClienteHtml = firmaClienteUrl
-      ? '<img src="' + firmaClienteUrl + '" alt="Firma del cliente" style="height:58px;width:auto;max-width:180px;object-fit:contain;display:block;margin:0 auto 4px"/>'
-      : '<div style="height:58px"></div>';
+    const firmaClienteHtml = firmaCliente
+      ? '<img src="' + firmaCliente + '" alt="Firma del cliente" class="firma"/>'
+      : '<div style="height:80px"></div>';
 
     const marcaAguaUrl = BASE_URL + '/MARCA_DE_AGUA.png?v=20260707-2';
 
@@ -949,7 +1014,7 @@ const PDF = {
       '<tr><td>' + c.num + '</td><td>' + Fmt.date(c.fecha) + '</td><td>' + Fmt.currency(c.monto) + '</td><td>' + Fmt.currency(c.saldoRestante) + '</td></tr>'
     ).join('');
 
-    const html = '<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta charset="UTF-8"/>\n<title>Pagaré ' + Fmt.folioPagare(prestamo.folioNum) + '</title>\n'
+    const html = '<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1"/>\n<title>Pagaré ' + Fmt.folioPagare(prestamo.folioNum) + '</title>\n'
     + '<style>\n'
     + '*{box-sizing:border-box;margin:0;padding:0}\n'
     + 'body{font-family:"Times New Roman",serif;color:#1a1a1a;padding:36px;max-width:720px;margin:0 auto;font-size:12px;line-height:1.7;'
@@ -979,7 +1044,9 @@ const PDF = {
     + 'table.amort tr:nth-child(even) td{background:#f8f8fc}\n'
     + '.penal-box{background:#fff7f0;border:1px solid #e8b87a;border-radius:6px;padding:12px;margin:12px 0;font-size:11px;color:#7a4a00}\n'
     + '.legal-box{background:#f8f6fc;border-left:3px solid #1A2340;padding:10px 14px;margin:12px 0;font-size:10.5px;color:#555;line-height:1.8}\n'
-    + '.signs{display:flex;gap:40px;margin-top:44px;padding-top:20px;border-top:0.5px solid #ddd}\n'
+    + '.signs{display:flex;gap:40px;margin-top:44px;padding-top:20px;border-top:0.5px solid #ddd;page-break-inside:avoid;break-inside:avoid}\n'
+    + '.firma{display:block;height:80px;width:auto;max-width:100%;object-fit:contain;margin:0 auto 4px}\n'
+    + '@media (max-width:560px){body{padding:16px;font-size:11px}.signs{gap:16px}.header{flex-direction:column;gap:8px}.folio{text-align:left}.amount-box .val{font-size:24px}}\n'
     + '.sign-col{flex:1;text-align:center}\n'
     + '.sign-line{border-top:1px solid #333;margin:0 16px 5px}\n'
     + '.sign-name{font-size:11px;font-weight:700;color:#1A2340}\n'
@@ -1077,8 +1144,10 @@ const PDF = {
     + '</div>\n'
     + '</body>\n</html>';
 
-    const w = PDF.abrirVentana(html);
-    if (w) PDF.imprimirCuandoListo(w);
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    PDF.imprimirCuandoListo(w);
   },
 
   // Abre una ventana para imprimir; si el navegador la bloquea, avisa
@@ -1114,7 +1183,7 @@ const PDF = {
       ? grupo.map(x => '  <tr><td>Cuota ' + x.numCuota + (x.diasAtraso > 0 ? ' <span style="color:#C62828;font-weight:400">(' + x.diasAtraso + ' día' + (x.diasAtraso !== 1 ? 's' : '') + ' de atraso)</span>' : '') + '</td><td>' + Fmt.currency(x.monto) + (Number(x.penalizacion) > 0 ? ' + ' + Fmt.currency(x.penalizacion) + ' penalización' : '') + '</td></tr>\n').join('')
       : '';
 
-    const html = '<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta charset="UTF-8"/>\n<title>Recibo ' + folio + '</title>\n'
+    const html = '<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1"/>\n<title>Recibo ' + folio + '</title>\n'
     + '<style>\n'
     + '*{box-sizing:border-box;margin:0;padding:0}\n'
     + 'body{font-family:Arial,sans-serif;color:#1a1a1a;background:#fff;padding:32px;max-width:420px;margin:0 auto}\n'
@@ -1630,8 +1699,8 @@ const Modal = {
       firmaBox.style.cssText = 'flex-direction:column;align-items:flex-start;margin-top:4px';
       firmaBox.innerHTML = `<div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px">FIRMA DEL CLIENTE</div>`;
       const firmaImg = document.createElement('img');
-      firmaImg.src = firmaClienteVisual;
-      firmaImg.style.cssText = 'height:40px;object-fit:contain;max-width:100%';
+      firmaImg.style.cssText = 'height:56px;object-fit:contain;max-width:100%;display:block';
+      recortarFirma(firmaClienteVisual).then(u => { firmaImg.src = u; });
       firmaBox.appendChild(firmaImg);
       datosBody.appendChild(firmaBox);
     }
@@ -2007,9 +2076,9 @@ const Modal = {
     firmaSection.innerHTML = `
       <label>Firma digital del cliente <span style="font-size:10px;color:var(--ink-soft);font-weight:400;text-transform:none">— firmar con el dedo</span></label>
       <div style="border:1.5px solid var(--sand-mid);border-radius:var(--r-lg);overflow:hidden;background:#fff;position:relative">
-        <canvas id="firma-canvas" width="358" height="140" style="display:block;width:100%;touch-action:none;cursor:crosshair"></canvas>
+        <canvas id="firma-canvas" width="358" height="200" style="display:block;width:100%;touch-action:none;cursor:crosshair"></canvas>
         <div id="firma-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
-          <span style="font-size:12px;color:var(--ink-soft)">Firmar aquí con el dedo</span>
+          <span style="font-size:12px;color:var(--ink-soft)">Firmar aquí con el dedo, sin salirse del recuadro</span>
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:6px">
@@ -2069,7 +2138,12 @@ const Modal = {
       // If editing and has signature, draw it
       if (firmaDataUrl) {
         const img = new Image();
-        img.onload = () => { ctx.drawImage(img, 0, 0); };
+        img.onload = () => {
+          // Dibuja la firma guardada centrada y ajustada al recuadro
+          const k = Math.min(1, (canvas.width - 20) / img.width, (canvas.height - 20) / img.height);
+          const w = img.width * k, h = img.height * k;
+          ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+        };
         img.src = firmaDataUrl;
         placeholder.style.display = 'none';
         status.textContent = '✓ Firma guardada';
@@ -2158,6 +2232,9 @@ const Modal = {
         firmaClienteUrl: firmaDataUrl,
         firmaUrl: firmaDataUrl,
       };
+      if (firmaDataUrl && firmaDataUrl !== (editing?.firmaClienteUrl || editing?.firmaUrl)) {
+        data.firmaClienteUrl = data.firmaUrl = await recortarFirma(firmaDataUrl);
+      }
 
       saveBtn.disabled = true;
       saveBtn.innerHTML = '<i class="ti ti-loader"></i> Guardando...';
@@ -3474,7 +3551,7 @@ const Modal = {
     const canvas = document.createElement('canvas');
     canvas.id = 'firma-canvas';
     canvas.style.cssText = 'display:block;width:100%;touch-action:none;cursor:crosshair';
-    canvas.height = 160;
+    canvas.height = 200;
     canvasWrap.appendChild(canvas);
 
     const hint = document.createElement('div');
@@ -3579,7 +3656,7 @@ const Modal = {
       btnGuardar.disabled = true;
       btnGuardar.innerHTML = '<i class="ti ti-loader"></i> Guardando...';
       try {
-        const firmaUrl = canvas.toDataURL('image/png');
+        const firmaUrl = await recortarFirma(canvas.toDataURL('image/png'));
         await Store.guardarFirmaYaretzi(firmaUrl);
         Toast.success('Firma guardada correctamente');
         App.navigate('dashboard', null, { replace: true });

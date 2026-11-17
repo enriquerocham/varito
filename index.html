@@ -6,7 +6,11 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-<meta name="theme-color" content="#7A4A00"/>
+<meta name="theme-color" content="#FFFFFF"/>
+<meta name="apple-mobile-web-app-title" content="Varito"/>
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
 <title>Varito — Tu dinerito, siempre a la mano</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
@@ -275,6 +279,51 @@ body {{ -webkit-tap-highlight-color: transparent; }}
   }
   html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
   body { -webkit-tap-highlight-color: transparent; }
+
+/* ── Inicio "Hoy" ── */
+.icon-btn { position: relative; width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--sand); color: var(--ink-mid); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 19px; }
+.dot-badge { position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.hoy-hero { background: var(--navy); margin: 14px 16px 8px; border-radius: var(--r-xl); padding: 18px 20px; color: #fff; }
+.hoy-barra { height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; overflow: hidden; margin: 12px 0 14px; }
+.hoy-barra div { height: 100%; background: var(--green); border-radius: 4px; transition: width .6s ease; }
+.hoy-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hoy-mini div { background: rgba(255,255,255,0.08); border-radius: var(--r-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.hoy-mini span { font-size: 10px; color: rgba(255,255,255,0.6); letter-spacing: .3px; }
+.hoy-mini strong { font-size: 14px; font-weight: 600; }
+.hoy-mini .rojo { background: rgba(198,40,40,0.35); }
+.sec-count { font-size: 11px; color: var(--ink-soft); font-weight: 500; }
+.hoy-lista { margin: 0 16px; background: var(--white); border: 0.5px solid var(--sand-mid); border-radius: var(--r-lg); overflow: hidden; }
+.hoy-row { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-bottom: 0.5px solid var(--sand-mid); cursor: pointer; }
+.hoy-row:last-child { border-bottom: none; }
+.hoy-row:active { background: var(--sand); }
+.hoy-vacio { padding: 16px; font-size: 12px; color: var(--ink-soft); display: flex; align-items: center; gap: 8px; }
+.hoy-vacio i { font-size: 18px; color: var(--green-mid); }
+.mini-btn { border: none; border-radius: var(--r-pill); padding: 6px 11px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-family: 'Inter', sans-serif; min-height: 32px; }
+.mini-btn.ok { background: var(--success); color: #fff; }
+.mini-btn.wa { background: #E7F8EE; color: #128C4B; font-size: 16px; padding: 6px 9px; }
+.instalar-card { margin: 16px; padding: 14px; border-radius: var(--r-lg); background: var(--green-light); display: flex; gap: 12px; align-items: flex-start; }
+.cobro-total { background: var(--success-light); border-radius: var(--r-lg); padding: 14px; text-align: center; }
+.recibo-preview { background: var(--sand); border-radius: var(--r-lg); padding: 10px; margin-bottom: 12px; max-height: 46vh; overflow-y: auto; }
+.recibo-preview img { width: 100%; display: block; border-radius: var(--r-md); box-shadow: var(--shadow-sm); }
+.modal-sheet .btn + .btn { margin-top: 0; }
+
+/* ── Tarjeta del préstamo ── */
+.prest-card { margin: 10px 16px 12px; background: var(--white); border: 0.5px solid var(--sand-mid); border-radius: var(--r-lg); padding: 14px; }
+.prest-barra { height: 10px; background: var(--sand-mid); border-radius: 5px; overflow: hidden; margin: 8px 0 6px; }
+.prest-barra div { height: 100%; background: var(--green); border-radius: 5px; }
+.prest-barra.late div { background: var(--warn); }
+.prest-cuotas { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0 2px; scrollbar-width: none; }
+.prest-cuotas::-webkit-scrollbar { display: none; }
+.pc { flex: 0 0 auto; width: 30px; text-align: center; font-size: 9px; color: var(--ink-soft); }
+.pc b { display: flex; width: 26px; height: 26px; margin: 0 auto 3px; border-radius: 50%; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: var(--sand-mid); color: var(--ink-mid); }
+.pc.pagado b { background: var(--green); color: #fff; }
+.pc.vencido b { background: var(--danger); color: #fff; }
+.pc.hoy b { background: var(--warn); color: #fff; }
+.prest-prox { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 10px 12px; border-radius: var(--r-md); background: var(--sand); font-size: 12px; color: var(--ink-mid); }
+.prest-prox.late { background: var(--danger-light); color: var(--danger); }
+.mini-progress { height: 4px; width: 110px; background: var(--sand-mid); border-radius: 2px; overflow: hidden; margin-top: 5px; }
+.mini-progress div { height: 100%; background: var(--green); }
+.offline-bar { position: sticky; top: 0; z-index: 60; background: var(--warn-light); color: #8B5E1A; font-size: 12px; text-align: center; padding: 6px 12px; }
 </style>
 </head>
 <body>
@@ -435,10 +484,21 @@ function onFbReady(fn) {
   else fbCallbacks.push(fn);
 }
 
+// Sin internet, Firestore guarda los cambios en el teléfono y los sube al reconectar,
+// pero su promesa no termina hasta que el servidor responde. Para no dejar la app
+// "pensando", sin conexión se continúa de inmediato.
+const escribir = (promesa) => {
+  if (navigator.onLine !== false) return promesa;
+  promesa.catch(e => console.warn('Escritura pendiente falló', e));
+  return Promise.resolve();
+};
+
 function initFirebase() {
   try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    // Guarda una copia local para que la app abra y funcione aunque falle el internet
+    try { db.enablePersistence({ synchronizeTabs: true }).catch(e => console.warn('Sin modo sin conexión:', e.code || e)); } catch (e) {}
     fbReady = true;
     fbCallbacks.forEach(fn => fn());
   } catch (e) {
@@ -506,7 +566,7 @@ const Store = (() => {
       if (!c.fotoIneBackUrl && sol.fotoIneBackUrl) upd.fotoIneBackUrl = sol.fotoIneBackUrl;
       if (!c.fotoDomicilioUrl && sol.fotoDomicilioUrl) upd.fotoDomicilioUrl = sol.fotoDomicilioUrl;
       if (Object.keys(upd).length) {
-        try { await db.collection('clientes').doc(c.id).update(upd); }
+        try { await escribir(db.collection('clientes').doc(c.id).update(upd)); }
         catch (e) { console.warn('No se pudieron copiar las fotos de', c.nombre, e); }
       }
     }
@@ -529,7 +589,7 @@ const Store = (() => {
       const estado = liquidado ? 'liquidado' : 'activo';
       if (p.estado !== estado) {
         try {
-          await db.collection('prestamos').doc(p.id).update({ estado });
+          await escribir(db.collection('prestamos').doc(p.id).update({ estado }));
           console.log('Estado corregido', Fmt.folioPagare(p.folioNum), p.estado, '→', estado);
         } catch (e) { console.warn('No se pudo corregir el estado de', p.id, e); }
       }
@@ -581,7 +641,7 @@ const Store = (() => {
     const estado = liquidado ? 'liquidado' : 'activo';
     if (p.estado !== estado) upd.estado = estado;
     if (Boolean(p.tuvoAtraso) !== tuvoAtraso) upd.tuvoAtraso = tuvoAtraso;
-    if (Object.keys(upd).length) await db.collection('prestamos').doc(prestamoId).update(upd);
+    if (Object.keys(upd).length) await escribir(db.collection('prestamos').doc(prestamoId).update(upd));
   };
 
   return {
@@ -624,20 +684,21 @@ const Store = (() => {
 
     // ── Config / Firma Yaretzi ──
     guardarFirmaYaretzi: async (firmaUrl) => {
-      await db.collection('configuracion').doc('varito').set(
+      await escribir(db.collection('configuracion').doc('varito').set(
         { firmaYaretzi: firmaUrl }, { merge: true }
-      );
+      ));
     },
     getFirmaYaretzi: () => state.config.firmaYaretzi || null,
 
     // ── CRUD clientes ──
     addCliente: async (data) => {
       const doc = { ...data, createdAt: hoyLocal() };
-      const ref = await db.collection('clientes').add(doc);
+      const ref = db.collection('clientes').doc();
+      await escribir(ref.set(doc));
       return { id: ref.id, ...doc };
     },
     updateCliente: async (id, data) => {
-      await db.collection('clientes').doc(id).update(data);
+      await escribir(db.collection('clientes').doc(id).update(data));
     },
     deleteCliente: async (id) => {
       const batch = db.batch();
@@ -647,13 +708,14 @@ const Store = (() => {
         batch.delete(db.collection('prestamos').doc(p.id));
       }
       batch.delete(db.collection('clientes').doc(id));
-      await batch.commit();
+      await escribir(batch.commit());
     },
 
     // ── CRUD préstamos ──
     // El folio se asigna con una transacción sobre un contador compartido,
     // así dos dispositivos nunca generan el mismo número de pagaré.
     addPrestamo: async (data) => {
+      if (navigator.onLine === false) throw new Error('Se necesita internet para crear un préstamo (asigna el folio).');
       const maxLocal = state.prestamos.reduce((m, p) => Math.max(m, p.folioNum || 0), 0);
       const contadorRef = db.collection('configuracion').doc('contadores');
       const nuevoRef = db.collection('prestamos').doc();
@@ -673,7 +735,7 @@ const Store = (() => {
       const batch = db.batch();
       pagosDe(prestamoId).forEach(pg => batch.delete(db.collection('pagos').doc(pg.id)));
       batch.delete(db.collection('prestamos').doc(prestamoId));
-      await batch.commit();
+      await escribir(batch.commit());
     },
 
     // ── Pagos ──
@@ -717,7 +779,7 @@ const Store = (() => {
         batch.set(ref, pago);
         nuevos.push({ id: ref.id, ...pago });
       });
-      await batch.commit();
+      await escribir(batch.commit());
       await recalcularPrestamo(prestamoId, [...pagosDe(prestamoId), ...nuevos]);
       return nuevos;
     },
@@ -731,7 +793,7 @@ const Store = (() => {
         : [pg];
       const batch = db.batch();
       grupo.forEach(x => batch.delete(db.collection('pagos').doc(x.id)));
-      await batch.commit();
+      await escribir(batch.commit());
       const ids = new Set(grupo.map(x => x.id));
       await recalcularPrestamo(pg.prestamoId, pagosDe(pg.prestamoId).filter(x => !ids.has(x.id)));
       return grupo.length;
@@ -814,7 +876,7 @@ const Store = (() => {
     },
 
     rechazarSolicitud: async (solicitudId) => {
-      await db.collection('solicitudes').doc(solicitudId).update({ estado: 'rechazada' });
+      await escribir(db.collection('solicitudes').doc(solicitudId).update({ estado: 'rechazada' }));
     },
 
     // ── Helpers ──
@@ -828,7 +890,10 @@ const Store = (() => {
     // Saldo que quedaba justo después de un pago (para recibos reimpresos)
     getSaldoDespuesDe: (prestamo, pagosRecibo) => {
       const maxCuota = Math.max(...pagosRecibo.map(x => x.numCuota || 0));
-      const pagado = pagosDe(prestamo.id)
+      // Incluye los pagos del recibo aunque todavía no hayan llegado a la lista local
+      const todos = new Map(pagosDe(prestamo.id).map(pg => [pg.id, pg]));
+      pagosRecibo.forEach(pg => todos.set(pg.id, pg));
+      const pagado = [...todos.values()]
         .filter(pg => (pg.numCuota || 0) <= maxCuota)
         .reduce((s, pg) => s + (Number(pg.monto) || 0), 0);
       return Math.max(0, redondear(prestamo.totalConInteres - pagado));
@@ -1277,203 +1342,515 @@ const Modal = {
     if (this.active) { this.active.remove(); this.active = null; }
   },
 };
-</script><script>const Dashboard = {
-  filtro: 'todos',
-  render() {
-    const stats = Store.getStats();
-    const clientes = Store.getClientes();
+</script><script>// ── Cobranza: qué toca cobrar hoy, quién va atrasado y qué viene ──
+const Cobranza = {
+  agenda() {
+    const hoy = hoyLocal();
+    const limite = fechaLocal(new Date(new Date(hoy + 'T00:00:00').getTime() + 7 * 86400000));
+    const hoyLista = [], atrasados = [], proximos = [];
+    let porCobrarHoy = 0;
+    Store.getPrestamos().filter(p => p.estado === 'activo').forEach(p => {
+      const cliente = Store.getCliente(p.clienteId);
+      if (!cliente) return;
+      const tabla = Store.getTableraAmortizacion(p);
+      const vencidas = tabla.filter(c => c.estado === 'vencido');
+      const deHoy = tabla.find(c => c.estado === 'hoy');
+      const siguiente = tabla.find(c => c.estado === 'pendiente');
+      if (vencidas.length) {
+        atrasados.push({
+          prestamo: p, cliente, vencidas,
+          dias: Math.max(...vencidas.map(c => c.diasAtraso)),
+          monto: vencidas.reduce((s, c) => s + c.monto, 0),
+          penal: vencidas.reduce((s, c) => s + c.penalizacion, 0),
+        });
+      }
+      if (deHoy) porCobrarHoy += deHoy.monto;
+      // Si ya tiene cuotas vencidas, aparece solo en "Con atraso" (ahí se cobra la más antigua primero)
+      if (deHoy && !vencidas.length) hoyLista.push({ prestamo: p, cliente, cuota: deHoy });
+      else if (!deHoy && !vencidas.length && siguiente && siguiente.fecha <= limite) {
+        proximos.push({ prestamo: p, cliente, cuota: siguiente });
+      }
+    });
+    atrasados.sort((a, b) => b.dias - a.dias);
+    hoyLista.sort((a, b) => String(a.cliente.nombre).localeCompare(String(b.cliente.nombre), 'es'));
+    proximos.sort((a, b) => a.cuota.fecha.localeCompare(b.cuota.fecha));
 
-    const getEstadoCliente = (clienteId) => {
-      const ps = Store.getPrestamosByCliente(clienteId).filter(p => p.estado === 'activo');
-      if (!ps.length) return 'inactivo';
-      const tabla = ps.flatMap(p => Store.getTableraAmortizacion(p));
-      if (tabla.filter(c => c.estado === 'vencido').length > 0) return 'atrasado';
-      if (tabla.filter(c => c.estado === 'hoy').length > 0) return 'hoy';
-      return 'corriente';
+    const pagosHoy = Store.getPagos().filter(pg => pg.fecha === hoy);
+    const cobradoHoy = pagosHoy.reduce((s, pg) => s + Store.totalPago(pg), 0);
+    const vencidoTotal = atrasados.reduce((s, x) => s + x.monto, 0);
+    return { hoyLista, atrasados, proximos, cobradoHoy, porCobrarHoy, vencidoTotal, meta: cobradoHoy + porCobrarHoy };
+  },
+};
+
+// ── Mensajes de WhatsApp ──
+const Mensajes = {
+  tel: (t) => String(t || '').replace(/\D/g, ''),
+  abrirWhatsApp(telefono, texto) {
+    const url = 'https://wa.me/52' + Mensajes.tel(telefono) + '?text=' + encodeURIComponent(texto);
+    const w = window.open(url, '_blank');
+    if (!w) location.href = url;
+  },
+  primerNombre: (n) => String(n || '').trim().split(/\s+/)[0] || '',
+  recordatorio(cliente, prestamo, cuotas, penal) {
+    const nombre = Mensajes.primerNombre(cliente.nombre);
+    const total = cuotas.reduce((s, c) => s + c.monto, 0);
+    const vencida = cuotas.some(c => c.estado === 'vencido');
+    if (!vencida) {
+      const c = cuotas[0];
+      return 'Hola *' + nombre + '* 👋\n\nTe recordamos que ' + (c.fecha === hoyLocal() ? '*hoy*' : 'el *' + Fmt.date(c.fecha) + '*')
+        + ' vence tu cuota ' + c.num + ' de ' + prestamo.plazo + ' por *' + Fmt.currency(c.monto) + '*.\n\n'
+        + 'Gracias por tu puntualidad 🙌\n\n*Varito* · Tu dinerito, siempre a la mano';
+    }
+    return 'Hola *' + nombre + '* 👋\n\nTe recordamos que tienes '
+      + (cuotas.length === 1 ? '*1 cuota vencida*' : '*' + cuotas.length + ' cuotas vencidas*')
+      + ' por *' + Fmt.currency(total) + '*'
+      + (penal > 0 ? ', más *' + Fmt.currency(penal) + '* de penalización acumulada a hoy' : '') + '.\n\n'
+      + 'La penalización aumenta cada día de atraso, así que te sugerimos ponerte al corriente lo antes posible.\n\n'
+      + 'Cualquier duda, con gusto te atendemos.\n\n*Varito* · Tu dinerito, siempre a la mano';
+  },
+  pago(cliente, prestamo, grupo) {
+    const nombre = Mensajes.primerNombre(cliente.nombre);
+    const ord = [...grupo].sort((a, b) => a.numCuota - b.numCuota);
+    const cuotasTxt = ord.length === 1
+      ? 'Cuota ' + ord[0].numCuota + ' de ' + prestamo.plazo
+      : 'Cuotas ' + ord[0].numCuota + ' a ' + ord[ord.length - 1].numCuota + ' de ' + prestamo.plazo;
+    const total = ord.reduce((s, x) => s + Store.totalPago(x), 0);
+    const penal = ord.reduce((s, x) => s + (Number(x.penalizacion) || 0), 0);
+    const saldo = Store.getSaldoDespuesDe(prestamo, ord);
+    return 'Hola *' + nombre + '* 👋\n\nTe confirmamos tu pago recibido 🪙\n\n'
+      + '✅ *Monto:* ' + Fmt.currency(total) + '\n'
+      + '🧾 *Concepto:* ' + cuotasTxt + '\n'
+      + (penal > 0 ? '⚠️ *Incluye penalización por atraso:* ' + Fmt.currency(penal) + '\n' : '')
+      + '📅 *Fecha:* ' + Fmt.date(ord[0].fecha) + '\n'
+      + '💳 *Método:* ' + Fmt.metodoLabel(ord[0].metodo) + (ord[0].folio ? '\nReferencia: ' + ord[0].folio : '') + '\n\n'
+      + (saldo > 0 ? 'Tu saldo restante es de *' + Fmt.currency(saldo) + '*.'
+                   : '✅ *¡Felicidades! Tu préstamo ha sido liquidado en su totalidad.* Muchas gracias.')
+      + '\n\nCualquier duda, con gusto te atendemos 😊\n\n*Varito* · Tu dinerito, siempre a la mano';
+  },
+};
+
+// ── Hoja inferior reutilizable (con el diseño de Varito) ──
+const Hoja = {
+  abrir(titulo, construir) {
+    const bd = document.createElement('div');
+    bd.className = 'modal-backdrop';
+    const sheet = document.createElement('div');
+    sheet.className = 'modal-sheet';
+    sheet.innerHTML = '<div class="modal-handle"></div>' + (titulo ? '<div class="modal-title">' + titulo + '</div>' : '');
+    const body = document.createElement('div');
+    body.style.padding = '0 20px';
+    sheet.appendChild(body);
+    bd.appendChild(sheet);
+    const cerrar = () => {
+      bd.remove();
+      if (!document.querySelector('.modal-backdrop')) App.onDatos();
+    };
+    bd.addEventListener('click', e => { if (e.target === bd) cerrar(); });
+    document.body.appendChild(bd);
+    construir(body, cerrar);
+    return cerrar;
+  },
+};
+
+// ── Cobro rápido: la siguiente cuota pendiente en un toque ──
+const CobroRapido = {
+  abrir(prestamoId) {
+    const p = Store.getPrestamo(prestamoId);
+    const cliente = p && Store.getCliente(p.clienteId);
+    if (!p || !cliente) return;
+    const c = Store.getTableraAmortizacion(p).find(x => x.estado !== 'pagado');
+    if (!c) { Toast.show('No hay cuotas pendientes'); return; }
+    const penal = c.estado === 'vencido' ? c.penalizacion : 0;
+    let metodo = 'efectivo', condonar = false;
+
+    Hoja.abrir('Cobrar cuota', (body, cerrar) => {
+      const E = Fmt.esc;
+      body.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+          <div class="c-avatar ${Fmt.avatarColor(cliente.nombre)}">${E(Fmt.initials(cliente.nombre))}</div>
+          <div><div style="font-size:15px;font-weight:600">${E(cliente.nombre)}</div>
+          <div style="font-size:12px;color:var(--ink-soft)">Cuota ${c.num} de ${p.plazo} · ${Fmt.date(c.fecha)}${c.estado === 'vencido' ? ` · <span style="color:var(--danger)">${c.diasAtraso} día${c.diasAtraso !== 1 ? 's' : ''} de atraso</span>` : ''}</div></div>
+        </div>
+        <div class="cobro-total">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.5px;color:var(--success)">TOTAL A COBRAR</div>
+          <div id="cr-total" style="font-size:32px;font-weight:700;color:var(--success)"></div>
+          <div id="cr-desglose" style="font-size:12px;color:var(--ink-mid)"></div>
+        </div>
+        ${penal > 0 ? `<div class="toggle-wrap" style="padding:10px 0;border:none"><span class="toggle-label">Condonar penalización</span><button class="toggle" id="cr-cond"><div class="toggle-thumb"></div></button></div>` : ''}
+        <div class="method-row" style="margin:12px 0">
+          <div class="method-chip active" data-m="efectivo"><i class="ti ti-cash"></i> Efectivo</div>
+          <div class="method-chip" data-m="transferencia"><i class="ti ti-building-bank"></i> Transferencia</div>
+          <div class="method-chip" data-m="codi"><i class="ti ti-device-mobile"></i> CoDi</div>
+        </div>
+        <button class="btn btn-success" id="cr-ok"><i class="ti ti-check"></i> Confirmar cobro</button>
+        <button class="btn btn-secondary" id="cr-mas" style="margin-top:8px">Más opciones (fecha, varias cuotas, comprobante)</button>`;
+      const pintar = () => {
+        const pe = condonar ? 0 : penal;
+        body.querySelector('#cr-total').textContent = Fmt.currency(c.monto + pe);
+        body.querySelector('#cr-desglose').innerHTML = penal > 0
+          ? `Cuota ${Fmt.currency(c.monto)} + penalización <span style="${condonar ? 'text-decoration:line-through' : ''}">${Fmt.currency(penal)}</span>`
+          : `Saldo después: ${Fmt.currency(Math.max(0, Store.getSaldoRestante(p.id) - c.monto))}`;
+      };
+      pintar();
+      const cond = body.querySelector('#cr-cond');
+      if (cond) cond.onclick = () => { condonar = !condonar; cond.classList.toggle('on', condonar); pintar(); };
+      body.querySelectorAll('.method-chip[data-m]').forEach(ch => ch.onclick = () => {
+        metodo = ch.dataset.m;
+        body.querySelectorAll('.method-chip[data-m]').forEach(x => x.classList.remove('active'));
+        ch.classList.add('active');
+      });
+      body.querySelector('#cr-mas').onclick = () => { cerrar(); App.navigate('registrarPago', p.id); };
+      const ok = body.querySelector('#cr-ok');
+      ok.onclick = async () => {
+        ok.disabled = true;
+        ok.innerHTML = '<i class="ti ti-loader"></i> Guardando...';
+        try {
+          const nuevos = await Store.registrarPagos(p.id, [c.num], { fecha: hoyLocal(), metodo, condonarPenalizacion: condonar });
+          if (navigator.vibrate) navigator.vibrate(30);
+          cerrar();
+          Toast.success('Pago registrado');
+          ReciboCompartir.abrir(nuevos, p.id, { nuevo: true });
+        } catch (e) {
+          console.error(e);
+          Toast.error('No se pudo guardar. Intenta de nuevo.');
+          ok.disabled = false;
+          ok.innerHTML = '<i class="ti ti-check"></i> Confirmar cobro';
+        }
+      };
+    });
+  },
+};
+
+// ── Recibo como imagen (para compartir por WhatsApp) ──
+const ReciboImagen = {
+  _logo: null,
+  cargarLogo() {
+    if (this._logo) return this._logo;
+    this._logo = new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = 'LOGO_HORIZONTAL.png';
+    });
+    return this._logo;
+  },
+  async generar(grupo, prestamo, cliente) {
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+    const logo = await this.cargarLogo();
+    const ord = [...grupo].sort((a, b) => a.numCuota - b.numCuota);
+    const W = 1080, P = 72;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = 2600;
+    const x = cv.getContext('2d');
+    const F = (peso, tam) => `${peso} ${tam}px Inter, "Helvetica Neue", Arial, sans-serif`;
+    const NAVY = '#1A2340', GRIS = '#6B7A8C', VERDE = '#2E7D32', ROJO = '#C62828';
+    x.fillStyle = '#fff'; x.fillRect(0, 0, W, cv.height);
+    const rr = (x0, y0, w, h, r, color) => { x.fillStyle = color; x.beginPath(); x.roundRect ? x.roundRect(x0, y0, w, h, r) : x.rect(x0, y0, w, h); x.fill(); };
+    const wrap = (texto, maxW) => {
+      const palabras = String(texto).split(' '); const lineas = []; let l = '';
+      palabras.forEach(p => { const t = l ? l + ' ' + p : p; if (x.measureText(t).width > maxW && l) { lineas.push(l); l = p; } else l = t; });
+      if (l) lineas.push(l); return lineas;
     };
 
-    let clientesFiltrados = clientes.filter(c => {
-      const ps = Store.getPrestamosByCliente(c.id).filter(p => p.estado === 'activo');
-      if (this.filtro === 'todos') return ps.length > 0;
-      const estado = getEstadoCliente(c.id);
-      if (this.filtro === 'corriente') return estado === 'corriente' || estado === 'hoy';
-      if (this.filtro === 'atrasado') return estado === 'atrasado';
-      return true;
+    const primera = ord[0].numCuota, ultima = ord[ord.length - 1].numCuota;
+    const folio = Fmt.folioRecibo(prestamo.folioNum, primera) + (ultima !== primera ? '-' + String(ultima).padStart(2, '0') : '');
+    const sumaCuotas = ord.reduce((s, p) => s + (Number(p.monto) || 0), 0);
+    const sumaPenal = ord.reduce((s, p) => s + (Number(p.penalizacion) || 0), 0);
+    const condonada = ord.reduce((s, p) => s + (Number(p.penalizacionCondonada) || 0), 0);
+    const total = Math.round((sumaCuotas + sumaPenal) * 100) / 100;
+    const saldo = Store.getSaldoDespuesDe(prestamo, ord);
+
+    let y = P;
+    // Encabezado: logo + folio
+    if (logo) {
+      const h = 120, w = logo.width * h / logo.height;
+      x.drawImage(logo, P - 10, y - 10, w, h);
+    } else {
+      x.fillStyle = NAVY; x.font = F(700, 64); x.textBaseline = 'top'; x.fillText('varito', P, y);
+    }
+    x.textBaseline = 'top'; x.textAlign = 'right';
+    x.fillStyle = NAVY; x.font = F(700, 30); x.fillText(folio, W - P, y + 18);
+    x.fillStyle = GRIS; x.font = F(400, 28); x.fillText(Fmt.date(ord[0].fecha), W - P, y + 60);
+    x.textAlign = 'left';
+    y += 150;
+
+    // Caja del monto
+    x.font = F(400, 30);
+    const letras = wrap(Fmt.importe(total), W - 2 * P - 80);
+    const cajaH = 230 + letras.length * 40;
+    rr(P, y, W - 2 * P, cajaH, 28, '#E8F5E9');
+    x.textAlign = 'center'; x.fillStyle = VERDE;
+    x.font = F(700, 26); x.fillText('PAGO RECIBIDO', W / 2, y + 40);
+    x.font = F(700, 110); x.fillText(Fmt.currency(total), W / 2, y + 80);
+    x.font = 'italic ' + F(400, 30);
+    letras.forEach((l, i) => x.fillText(l, W / 2, y + 205 + i * 40));
+    x.textAlign = 'left';
+    y += cajaH + 40;
+
+    // Filas
+    const fila = (lbl, val, opts = {}) => {
+      x.font = F(500, 30); x.fillStyle = GRIS; x.fillText(lbl, P, y);
+      x.font = F(opts.bold ? 700 : 500, opts.size || 32); x.fillStyle = opts.color || NAVY;
+      x.textAlign = 'right';
+      const lineas = wrap(val, W - 2 * P - 360);
+      lineas.forEach((l, i) => x.fillText(l, W - P, y + i * 40));
+      x.textAlign = 'left';
+      y += Math.max(1, lineas.length) * 40 + 22;
+      if (!opts.sinLinea) { x.fillStyle = '#EEF1F4'; x.fillRect(P, y - 12, W - 2 * P, 2); y += 14; }
+    };
+    fila('Cliente', cliente.nombre);
+    fila('Préstamo', Fmt.folioPagare(prestamo.folioNum));
+    fila('Método', Fmt.metodoLabel(ord[0].metodo) + (ord[0].folio ? ' · ' + ord[0].folio : ''));
+    fila('Concepto', primera === ultima ? 'Cuota ' + primera + ' de ' + prestamo.plazo : 'Cuotas ' + primera + ' a ' + ultima + ' de ' + prestamo.plazo);
+    if (sumaPenal > 0 || ord.length > 1) {
+      ord.forEach(p => fila('  Cuota ' + p.numCuota + (p.diasAtraso > 0 ? ' (' + p.diasAtraso + ' d atraso)' : ''),
+        Fmt.currency(p.monto) + (Number(p.penalizacion) > 0 ? ' + ' + Fmt.currency(p.penalizacion) : ''),
+        { size: 28, color: Number(p.penalizacion) > 0 ? ROJO : NAVY }));
+    }
+    if (sumaPenal > 0) fila('Penalización por atraso', Fmt.currency(sumaPenal), { color: ROJO });
+    if (condonada > 0) fila('Penalización condonada', Fmt.currency(condonada), { color: GRIS });
+    y += 6;
+    fila('Saldo restante', Fmt.currency(saldo), { bold: true, size: 44, sinLinea: true });
+    if (saldo <= 0) {
+      y += 6; rr(P, y, W - 2 * P, 80, 40, '#E8F5E9');
+      x.textAlign = 'center'; x.fillStyle = VERDE; x.font = F(700, 32); x.fillText('✓  Préstamo liquidado', W / 2, y + 22); x.textAlign = 'left';
+      y += 110;
+    }
+
+    // Pie
+    y += 30; x.fillStyle = '#EEF1F4'; x.fillRect(P, y, W - 2 * P, 2); y += 36;
+    x.textAlign = 'center';
+    x.fillStyle = NAVY; x.font = F(700, 30); x.fillText(Store.ACREEDORA, W / 2, y); y += 44;
+    x.fillStyle = GRIS; x.font = F(400, 26); x.fillText('Acreedora · Varito · Tu dinerito, siempre a la mano', W / 2, y); y += 70;
+    x.textAlign = 'left';
+
+    // Recorta al alto real
+    const out = document.createElement('canvas');
+    out.width = W; out.height = Math.ceil(y);
+    out.getContext('2d').drawImage(cv, 0, 0);
+    return await new Promise(r => out.toBlob(b => r(b), 'image/png'));
+  },
+};
+
+// ── Hoja para compartir el recibo (imagen por WhatsApp, mensaje o impresión) ──
+const ReciboCompartir = {
+  abrir(pagos, prestamoId, opts = {}) {
+    const prestamo = Store.getPrestamo(prestamoId);
+    const cliente = prestamo && Store.getCliente(prestamo.clienteId);
+    if (!prestamo || !cliente) return;
+    let grupo = pagos;
+    if (pagos.length === 1 && pagos[0].grupoId) {
+      const g = Store.getPagosByPrestamo(prestamoId).filter(x => x.grupoId === pagos[0].grupoId);
+      if (g.length) grupo = g;
+    }
+    let blob = null;
+    Hoja.abrir(opts.nuevo ? '¡Pago registrado!' : 'Recibo', (body, cerrar) => {
+      body.innerHTML = `
+        <div class="recibo-preview" id="rc-prev"><div style="padding:40px;text-align:center;color:var(--ink-soft);font-size:13px"><i class="ti ti-loader"></i> Preparando recibo…</div></div>
+        <button class="btn btn-success" id="rc-img"><i class="ti ti-brand-whatsapp"></i> Enviar recibo por WhatsApp</button>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-secondary btn-sm" id="rc-txt"><i class="ti ti-message"></i> Solo mensaje</button>
+          <button class="btn btn-secondary btn-sm" id="rc-print"><i class="ti ti-printer"></i> Imprimir</button>
+        </div>
+        <button class="btn btn-secondary" id="rc-listo" style="margin-top:8px">Listo</button>`;
+      const texto = Mensajes.pago(cliente, prestamo, grupo);
+      ReciboImagen.generar(grupo, prestamo, cliente).then(b => {
+        blob = b;
+        const prev = body.querySelector('#rc-prev');
+        if (prev && b) { prev.innerHTML = ''; const im = new Image(); im.src = URL.createObjectURL(b); im.alt = 'Recibo'; prev.appendChild(im); }
+      }).catch(e => console.error(e));
+      body.querySelector('#rc-img').onclick = async () => {
+        if (!blob) { Toast.show('Un momento, se está preparando el recibo'); return; }
+        const nombre = 'Recibo-' + Fmt.folioPagare(prestamo.folioNum) + '-cuota' + grupo.map(g => g.numCuota).join('-') + '.png';
+        const file = new File([blob], nombre, { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try { await navigator.share({ files: [file], text: texto }); }
+          catch (e) { if (e && e.name !== 'AbortError') Toast.error('No se pudo compartir'); }
+        } else {
+          // Computadora: descarga la imagen y abre WhatsApp con el mensaje
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob); a.download = nombre;
+          document.body.appendChild(a); a.click(); a.remove();
+          Toast.show('Imagen descargada. Adjúntala en el chat de WhatsApp.');
+          Mensajes.abrirWhatsApp(cliente.telefono, texto);
+        }
+      };
+      body.querySelector('#rc-txt').onclick = () => Mensajes.abrirWhatsApp(cliente.telefono, texto);
+      body.querySelector('#rc-print').onclick = () => PDF.generarRecibo(grupo[0], prestamo, cliente);
+      body.querySelector('#rc-listo').onclick = cerrar;
     });
+  },
+};
 
+// ── Inicio: la cobranza del día ──
+const Dashboard = {
+  render() {
+    const E = Fmt.esc;
+    const stats = Store.getStats();
+    const ag = Cobranza.agenda();
     const el = document.createElement('div');
+    const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+    const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const d = new Date();
+    const fechaTxt = dias[d.getDay()].charAt(0).toUpperCase() + dias[d.getDay()].slice(1) + ' ' + d.getDate() + ' de ' + meses[d.getMonth()];
+    const pct = ag.meta > 0 ? Math.min(100, Math.round(ag.cobradoHoy / ag.meta * 100)) : (ag.cobradoHoy > 0 ? 100 : 0);
 
-    // ── Top bar ──
-    const topBar = document.createElement('div');
-    topBar.className = 'top-bar';
-    topBar.innerHTML = `
-      <div>
-        <div style="font-size:12px;color:var(--ink-soft)">Bienvenida,</div>
+    el.innerHTML = `
+      <div class="top-bar">
         <div class="logo">
-          <img src="https://enriquerocham.github.io/varito/ÍCONO.png" alt="Varito" style="height:36px;width:auto" onerror="this.style.display='none'"/>
-          <div class="wordmark" style="font-size:20px;font-weight:700;color:var(--navy);margin-left:6px">varito</div>
+          <img src="%C3%8DCONO.png" alt="" style="height:34px;width:auto" onerror="this.style.display='none'"/>
+          <div style="margin-left:8px">
+            <div style="font-size:11px;color:var(--ink-soft)">${fechaTxt}</div>
+            <div style="font-size:17px;font-weight:700;color:var(--navy)">Hola, Yaretzi</div>
+          </div>
+        </div>
+        <div class="top-bar-actions">
+          <button class="icon-btn" id="btn-sol" aria-label="Solicitudes"><i class="ti ti-inbox"></i>${stats.solicitudesPendientes ? `<span class="dot-badge">${stats.solicitudesPendientes}</span>` : ''}</button>
+          <button class="icon-btn" id="btn-conf" aria-label="Configuración"><i class="ti ti-settings"></i></button>
         </div>
       </div>
-      <div class="top-bar-actions">
-        <button onclick="App.navigate('reportes')" style="background:none;border:none;cursor:pointer;padding:4px">
-          <i class="ti ti-chart-bar" style="font-size:22px;color:var(--ink-mid)"></i>
-        </button>
-        <button onclick="App.navigate('configuracion')" style="background:none;border:none;cursor:pointer;padding:4px">
-          <i class="ti ti-settings" style="font-size:22px;color:var(--ink-mid)"></i>
-        </button>
+
+      <div class="scroll-area">
+        <div class="hoy-hero">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <span class="hero-label" style="margin:0">Cobrado hoy</span>
+            <span style="font-size:12px;color:rgba(255,255,255,.6)">Meta ${Fmt.currency(ag.meta)}</span>
+          </div>
+          <div class="hero-amount" style="margin-top:6px">${Fmt.currency(ag.cobradoHoy)}<span style="font-size:15px;font-weight:500;color:rgba(255,255,255,.6);letter-spacing:0"> · ${pct}%</span></div>
+          <div class="hoy-barra"><div style="width:${pct}%"></div></div>
+          <div class="hoy-mini">
+            <div><span>Cartera activa</span><strong>${Fmt.currency(stats.cartera)}</strong></div>
+            <div class="${ag.atrasados.length ? 'rojo' : ''}"><span>Vencido</span><strong>${Fmt.currency(ag.vencidoTotal)}${ag.atrasados.length ? ' · ' + ag.atrasados.length : ''}</strong></div>
+          </div>
+        </div>
+
+        <div class="quick-actions" style="margin-top:4px">
+          <button class="qa-btn" data-go="nuevoCliente"><div class="qa-icon rose"><i class="ti ti-user-plus"></i></div><span class="qa-label">Cliente</span></button>
+          <button class="qa-btn" data-go="nuevoPrestamo"><div class="qa-icon mauve"><i class="ti ti-cash"></i></div><span class="qa-label">Préstamo</span></button>
+          <button class="qa-btn" id="qa-compartir"><div class="qa-icon green"><i class="ti ti-brand-whatsapp"></i></div><span class="qa-label">Invitar</span></button>
+          <button class="qa-btn" data-go="reportes"><div class="qa-icon mauve"><i class="ti ti-chart-bar"></i></div><span class="qa-label">Reportes</span></button>
+        </div>
+
+        <div class="section-title"><span>Por cobrar hoy</span><span class="sec-count">${ag.hoyLista.length ? ag.hoyLista.length + ' · ' + Fmt.currency(ag.hoyLista.reduce((s, x) => s + x.cuota.monto, 0)) : ''}</span></div>
+        <div class="hoy-lista" id="lista-hoy"></div>
+
+        <div class="section-title"><span style="${ag.atrasados.length ? 'color:var(--danger)' : ''}">Con atraso</span><span class="sec-count">${ag.atrasados.length || ''}</span></div>
+        <div class="hoy-lista" id="lista-atraso"></div>
+
+        <div class="section-title"><span>Próximos 7 días</span><span class="sec-count">${ag.proximos.length || ''}</span></div>
+        <div class="hoy-lista" id="lista-prox"></div>
+
+        <div id="instalar-wrap"></div>
+        <div style="height:16px"></div>
       </div>`;
-    el.appendChild(topBar);
 
-    // ── Scroll area ──
-    const scroll = document.createElement('div');
-    scroll.className = 'scroll-area';
+    const fila = (cliente, sub, subRojo, monto, botones) => {
+      const row = document.createElement('div');
+      row.className = 'hoy-row';
+      row.innerHTML = `
+        <div class="c-avatar ${Fmt.avatarColor(cliente.nombre)}" style="width:40px;height:40px">${E(Fmt.initials(cliente.nombre))}</div>
+        <div class="c-info" style="flex:1;min-width:0">
+          <div class="c-name">${E(cliente.nombre)}</div>
+          <div class="c-detail" style="${subRojo ? 'color:var(--danger)' : ''}">${sub}</div>
+        </div>
+        <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <div class="c-amount">${monto}</div>
+          <div style="display:flex;gap:6px" class="acciones"></div>
+        </div>`;
+      const acc = row.querySelector('.acciones');
+      botones.forEach(b => acc.appendChild(b));
+      row.onclick = (e) => { if (!e.target.closest('button')) App.navigate('clienteDetalle', cliente.id); };
+      return row;
+    };
+    const boton = (cls, html, label, fn) => {
+      const b = document.createElement('button');
+      b.className = 'mini-btn ' + cls; b.innerHTML = html; b.setAttribute('aria-label', label);
+      b.onclick = (e) => { e.stopPropagation(); fn(); };
+      return b;
+    };
+    const vacio = (icon, txt) => `<div class="hoy-vacio"><i class="ti ${icon}"></i>${txt}</div>`;
 
-    // Hero card
-    const hero = document.createElement('div');
-    hero.className = 'hero-card';
-    hero.innerHTML = `
-      <svg class="hero-wave" width="180" height="100" viewBox="0 0 180 100" fill="none">
-        <path d="M0 50 Q45 10 90 50 Q135 90 180 50" stroke="white" stroke-width="2.5" fill="none"/>
-        <path d="M0 70 Q45 30 90 70 Q135 110 180 70" stroke="white" stroke-width="1.5" fill="none"/>
-      </svg>
-      <div class="hero-label">Cartera activa</div>
-      <div class="hero-amount">${Fmt.currency(stats.cartera)}</div>
-      <div class="hero-sub">${stats.activos} préstamo${stats.activos !== 1 ? 's' : ''} activo${stats.activos !== 1 ? 's' : ''} · ${stats.liquidados} liquidado${stats.liquidados !== 1 ? 's' : ''}</div>
-      <div class="hero-chips">
-        <div class="chip ${this.filtro === 'todos' ? 'active' : ''}" data-filtro="todos">Todos</div>
-        <div class="chip ${this.filtro === 'corriente' ? 'active' : ''}" data-filtro="corriente">Al corriente</div>
-        <div class="chip ${this.filtro === 'atrasado' ? 'active' : ''}" data-filtro="atrasado">Con atraso</div>
-      </div>`;
-    scroll.appendChild(hero);
+    const lh = el.querySelector('#lista-hoy');
+    if (!ag.hoyLista.length) lh.innerHTML = vacio('ti-mood-smile', 'Nadie tiene pago hoy.');
+    ag.hoyLista.forEach(it => lh.appendChild(fila(it.cliente,
+      `Cuota ${it.cuota.num} de ${it.prestamo.plazo} · ${Fmt.frecuenciaLabel(it.prestamo.frecuencia).toLowerCase()}`, false,
+      Fmt.currency(it.cuota.monto), [
+        boton('wa', '<i class="ti ti-brand-whatsapp"></i>', 'Recordar por WhatsApp', () =>
+          Mensajes.abrirWhatsApp(it.cliente.telefono, Mensajes.recordatorio(it.cliente, it.prestamo, [it.cuota], 0))),
+        boton('ok', '<i class="ti ti-check"></i> Cobrar', 'Cobrar', () => CobroRapido.abrir(it.prestamo.id)),
+      ])));
 
-    // Section: Acciones rápidas
-    const secAcc = document.createElement('div');
-    secAcc.className = 'section-title';
-    secAcc.textContent = 'Acciones rápidas';
-    scroll.appendChild(secAcc);
+    const la = el.querySelector('#lista-atraso');
+    if (!ag.atrasados.length) la.innerHTML = vacio('ti-circle-check', 'Nadie va atrasado. ¡Excelente!');
+    ag.atrasados.forEach(it => la.appendChild(fila(it.cliente,
+      `${it.vencidas.length} cuota${it.vencidas.length !== 1 ? 's' : ''} · ${it.dias} día${it.dias !== 1 ? 's' : ''} · penal. ${Fmt.currency(it.penal)}`, true,
+      Fmt.currency(it.monto + it.penal), [
+        boton('wa', '<i class="ti ti-brand-whatsapp"></i>', 'Recordar por WhatsApp', () =>
+          Mensajes.abrirWhatsApp(it.cliente.telefono, Mensajes.recordatorio(it.cliente, it.prestamo, it.vencidas, it.penal))),
+        boton('ok', '<i class="ti ti-check"></i> Cobrar', 'Cobrar', () => CobroRapido.abrir(it.prestamo.id)),
+      ])));
 
-    const qaRow = document.createElement('div');
-    qaRow.className = 'quick-actions';
+    const lp = el.querySelector('#lista-prox');
+    if (!ag.proximos.length) lp.innerHTML = vacio('ti-calendar', 'Sin cobros en los próximos 7 días.');
+    ag.proximos.forEach(it => lp.appendChild(fila(it.cliente,
+      `${Fmt.date(it.cuota.fecha)} · cuota ${it.cuota.num} de ${it.prestamo.plazo}`, false,
+      Fmt.currency(it.cuota.monto), [
+        boton('wa', '<i class="ti ti-brand-whatsapp"></i>', 'Recordar por WhatsApp', () =>
+          Mensajes.abrirWhatsApp(it.cliente.telefono, Mensajes.recordatorio(it.cliente, it.prestamo, [it.cuota], 0))),
+      ])));
 
-    const qaButtons = [
-      { icon: 'ti-user-plus', cls: 'rose', label: 'Nuevo cliente', route: 'nuevoCliente' },
-      { icon: 'ti-cash', cls: 'mauve', label: 'Nuevo préstamo', route: 'nuevoPrestamo' },
-      { icon: 'ti-list', cls: 'green', label: 'Ver cartera', route: 'clientes' },
-    ];
-
-    qaButtons.forEach(qa => {
-      const btn = document.createElement('button');
-      btn.className = 'qa-btn';
-      btn.innerHTML = '<div class="qa-icon ' + qa.cls + '"><i class="ti ' + qa.icon + '"></i></div><span class="qa-label">' + qa.label + '</span>';
-      btn.onclick = () => App.navigate(qa.route);
-      qaRow.appendChild(btn);
-    });
-
-    // Compartir solicitud
-    const btnCompartir = document.createElement('button');
-    btnCompartir.className = 'qa-btn';
-    btnCompartir.innerHTML = '<div class="qa-icon" style="background:#E8F5E9;color:#2E7D32"><i class="ti ti-brand-whatsapp"></i></div><span class="qa-label">Compartir</span>';
-    btnCompartir.onclick = () => {
+    el.querySelector('#btn-sol').onclick = () => App.navigate('solicitudes');
+    el.querySelector('#btn-conf').onclick = () => App.navigate('configuracion');
+    el.querySelectorAll('[data-go]').forEach(b => b.onclick = () => App.navigate(b.dataset.go));
+    el.querySelector('#qa-compartir').onclick = () => {
       const link = 'https://enriquerocham.github.io/varito/solicitud/';
       const msg = 'Hola! Te invito a solicitar tu préstamo con *Varito* de forma rápida y sencilla.'
         + '\n\nLlena tu solicitud aquí:\n' + link
-        + '\n\nEn menos de 24 horas recibirás una respuesta. \uD83E\uDE99';
+        + '\n\nEn menos de 24 horas recibirás una respuesta. 🪙';
       window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
     };
-    qaRow.appendChild(btnCompartir);
-
-    // Solicitudes button - always visible
-    const btnSol = document.createElement('button');
-    btnSol.className = 'qa-btn';
-    btnSol.style.position = 'relative';
-    const solIcon = document.createElement('div');
-    solIcon.className = 'qa-icon';
-    solIcon.style.cssText = 'background:#FFF3CD;color:#8B6914;position:relative';
-    solIcon.innerHTML = '<i class="ti ti-inbox"></i>';
-    if (stats.solicitudesPendientes > 0) {
-      const badge = document.createElement('span');
-      badge.style.cssText = 'position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center';
-      badge.textContent = stats.solicitudesPendientes;
-      solIcon.appendChild(badge);
-    }
-    const solLbl = document.createElement('span');
-    solLbl.className = 'qa-label';
-    solLbl.textContent = 'Solicitudes';
-    btnSol.appendChild(solIcon);
-    btnSol.appendChild(solLbl);
-    btnSol.onclick = () => App.navigate('solicitudes');
-    qaRow.appendChild(btnSol);
-    scroll.appendChild(qaRow);
-
-    // Section: Clientes activos
-    const secCli = document.createElement('div');
-    secCli.className = 'section-title';
-    secCli.innerHTML = `<span>Clientes activos</span><a onclick="App.navigate('clientes')">Ver todos <i class="ti ti-arrow-right" style="font-size:11px"></i></a>`;
-    scroll.appendChild(secCli);
-
-    const cliList = document.createElement('div');
-    cliList.className = 'client-list';
-
-    if (clientesFiltrados.length === 0) {
-      const vacio = this.filtro === 'atrasado'
-        ? { icon: 'ti-mood-happy', t: 'Nadie tiene atraso', p: 'Todos tus clientes activos van al corriente.' }
-        : this.filtro === 'corriente'
-        ? { icon: 'ti-alert-triangle', t: 'Nadie al corriente', p: 'Revisa el filtro "Con atraso".' }
-        : clientes.length === 0
-        ? { icon: 'ti-users', t: '¡Todo listo, Yaretzi!', p: 'Toca "Nuevo cliente" para registrar tu primer cliente y comenzar.' }
-        : { icon: 'ti-cash', t: 'Sin préstamos activos', p: 'Crea un préstamo desde "Nuevo préstamo".' };
-      cliList.innerHTML = `
-        <div class="empty-state">
-          <i class="ti ${vacio.icon}"></i>
-          <h3>${vacio.t}</h3>
-          <p>${vacio.p}</p>
-        </div>`;
-    } else {
-      clientesFiltrados.slice(0, 5).forEach(c => {
-        const ps = Store.getPrestamosByCliente(c.id).filter(p => p.estado === 'activo');
-        const saldo = ps.reduce((s, p) => s + Store.getSaldoRestante(p.id), 0);
-        const estado = getEstadoCliente(c.id);
-        const freq = ps[0] ? Fmt.frecuenciaLabel(ps[0].frecuencia) : '';
-
-        let badgeHtml = '';
-        if (estado === 'atrasado') badgeHtml = '<span class="badge badge-late">Con atraso</span>';
-        else if (estado === 'hoy') badgeHtml = '<span class="badge badge-warn">Vence hoy</span>';
-        else badgeHtml = '<span class="badge badge-ok">Al corriente</span>';
-
-        const row = document.createElement('div');
-        row.className = 'client-row';
-        row.innerHTML = `
-          <div class="c-avatar ${Fmt.avatarColor(c.nombre)}">${Fmt.esc(Fmt.initials(c.nombre))}</div>
-          <div class="c-info">
-            <div class="c-name">${Fmt.esc(c.nombre)}</div>
-            <div class="c-detail">${freq} · ${ps.length} préstamo${ps.length !== 1 ? 's' : ''}</div>
-          </div>
-          <div class="c-right">
-            <div class="c-amount">${Fmt.currency(saldo)}</div>
-            ${badgeHtml}
-          </div>`;
-        row.onclick = () => App.navigate('clienteDetalle', c.id);
-        cliList.appendChild(row);
-      });
-    }
-    scroll.appendChild(cliList);
-
-    const spacer = document.createElement('div');
-    spacer.style.height = '16px';
-    scroll.appendChild(spacer);
-
-    el.appendChild(scroll);
-
-    // Chip filter listeners
-    hero.querySelectorAll('.chip[data-filtro]').forEach(chip => {
-      chip.addEventListener('click', () => {
-        this.filtro = chip.dataset.filtro;
-        App.renderView();
-      });
-    });
-
+    Instalar.tarjeta(el.querySelector('#instalar-wrap'));
     return el;
   }
+};
+
+// ── Instalar la app en el celular ──
+const Instalar = {
+  aviso: null,
+  esStandalone: () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true,
+  init() {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      Instalar.aviso = e;
+      if (App.route === 'dashboard') App.onDatos();
+    });
+    window.addEventListener('appinstalled', () => { Instalar.aviso = null; Toast.success('Varito quedó instalada'); });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW:', e));
+    }
+  },
+  oculto() { try { return localStorage.getItem('varito-instalar-oculto') === '1'; } catch (e) { return false; } },
+  tarjeta(cont) {
+    if (!cont || this.esStandalone() || this.oculto()) return;
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const div = document.createElement('div');
+    div.className = 'instalar-card';
+    div.innerHTML = `
+      <i class="ti ti-device-mobile-down" style="font-size:26px;color:var(--green-deep)"></i>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600;color:var(--ink)">Instala Varito en tu celular</div>
+        <div style="font-size:11px;color:var(--ink-mid);line-height:1.5;margin-top:2px">${
+          ios ? 'En Safari toca <i class="ti ti-share"></i> <strong>Compartir</strong> y luego <strong>Agregar a inicio</strong>.'
+          : this.aviso ? 'Ábrela como app, con su ícono y sin la barra del navegador.'
+          : 'En el menú del navegador elige <strong>Instalar app</strong> o <strong>Agregar a la pantalla de inicio</strong>.'}</div>
+        ${!ios && this.aviso ? '<button class="mini-btn ok" id="btn-instalar" style="margin-top:8px"><i class="ti ti-download"></i> Instalar</button>' : ''}
+      </div>
+      <button class="icon-btn" id="btn-inst-x" aria-label="Ocultar" style="width:28px;height:28px"><i class="ti ti-x" style="font-size:16px"></i></button>`;
+    cont.appendChild(div);
+    const b = div.querySelector('#btn-instalar');
+    if (b) b.onclick = async () => { const a = Instalar.aviso; if (!a) return; a.prompt(); try { await a.userChoice; } catch (e) {} Instalar.aviso = null; App.onDatos(); };
+    div.querySelector('#btn-inst-x').onclick = () => { try { localStorage.setItem('varito-instalar-oculto', '1'); } catch (e) {} div.remove(); };
+  },
 };
 </script><script>const Clientes = {
   query: '',
@@ -1761,7 +2138,8 @@ const Modal = {
           <div style="width:36px;height:36px;border-radius:50%;background:var(--navy-light);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--navy)">${p.folioNum}</div>
           <div>
             <div style="font-size:13px;font-weight:600;color:var(--ink)">${Fmt.folioPagare(p.folioNum)}</div>
-            <div style="font-size:11px;color:var(--ink-soft)">${Fmt.currency(p.monto)} · ${p.plazo} pagos</div>
+            <div style="font-size:11px;color:var(--ink-soft)">${Fmt.currency(p.monto)} · ${p.plazo} pagos ${Fmt.frecuenciaPlural(p.frecuencia)}</div>
+            <div class="mini-progress"><div style="width:${Math.round(pagosHechos / p.plazo * 100)}%"></div></div>
           </div>`;
 
         const hdrRight = document.createElement('div');
@@ -1786,22 +2164,42 @@ const Modal = {
         const content = document.createElement('div');
         content.style.display = expandedId === p.id ? 'block' : 'none';
 
-        // Mini stats
-        const ms = document.createElement('div');
-        ms.className = 'stats-row';
-        ms.style.paddingTop = '0';
-        ms.innerHTML = `
-          <div class="stat-card"><div class="stat-val">${Fmt.currency(p.monto)}</div><div class="stat-lbl">Capital</div></div>
-          <div class="stat-card"><div class="stat-val">${pagosHechos}/${p.plazo}</div><div class="stat-lbl">Pagos</div></div>
-          <div class="stat-card"><div class="stat-val" style="${saldo > 0 ? 'color:var(--navy)' : 'color:var(--success)'}">${Fmt.currency(saldo)}</div><div class="stat-lbl">Saldo</div></div>`;
-        content.appendChild(ms);
-
-        if (penalPendiente > 0 && p.estado === 'activo') {
-          const pa = document.createElement('div');
-          pa.style.cssText = 'margin:0 16px 8px';
-          pa.innerHTML = `<div class="alert-pill"><i class="ti ti-alert-triangle" style="font-size:16px"></i><span>${vencidas} cuota${vencidas !== 1 ? 's' : ''} vencida${vencidas !== 1 ? 's' : ''} · penalización a hoy: <strong>${Fmt.currency(penalPendiente)}</strong></span></div>`;
-          content.appendChild(pa);
-        }
+        // Tarjeta del préstamo: avance, saldo, próxima cuota y cuotas por color
+        const pagadoTotal = Math.max(0, p.totalConInteres - saldo);
+        const pct = Math.round(pagadoTotal / p.totalConInteres * 100);
+        const proxima = tabla.find(t => t.estado !== 'pagado');
+        const card = document.createElement('div');
+        card.className = 'prest-card';
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:flex-end">
+            <div>
+              <div style="font-size:11px;color:var(--ink-soft);font-weight:600;letter-spacing:.4px">SALDO</div>
+              <div style="font-size:26px;font-weight:700;color:${saldo > 0 ? 'var(--navy)' : 'var(--success)'}">${Fmt.currency(saldo)}</div>
+            </div>
+            <div style="text-align:right;font-size:12px;color:var(--ink-mid)">
+              <strong style="font-size:15px;color:var(--ink)">${pagosHechos} de ${p.plazo}</strong> cuotas<br/>
+              <span style="color:var(--ink-soft)">${Fmt.currency(pagadoTotal)} de ${Fmt.currency(p.totalConInteres)}</span>
+            </div>
+          </div>
+          <div class="prest-barra ${vencidas ? 'late' : ''}"><div style="width:${pct}%"></div></div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft)">
+            <span>Capital ${Fmt.currency(p.monto)} · ${p.interes}%</span><span>${pct}% pagado</span>
+          </div>
+          <div class="prest-cuotas">${tabla.map(t => `<div class="pc ${t.estado}" title="Cuota ${t.num} · ${Fmt.date(t.fecha)}"><b>${t.estado === 'pagado' ? '✓' : t.num}</b>${Fmt.dateShort(t.fecha).slice(0, 5)}</div>`).join('')}</div>
+          ${proxima && p.estado === 'activo' ? `
+          <div class="prest-prox ${proxima.estado === 'vencido' ? 'late' : ''}">
+            <span>${proxima.estado === 'vencido'
+              ? `<i class="ti ti-alert-triangle"></i> ${vencidas} vencida${vencidas !== 1 ? 's' : ''} · penalización a hoy <strong>${Fmt.currency(penalPendiente)}</strong>`
+              : `<i class="ti ti-calendar"></i> Próxima: cuota ${proxima.num} · ${proxima.estado === 'hoy' ? '<strong>hoy</strong>' : Fmt.date(proxima.fecha)}`}</span>
+            <strong>${Fmt.currency(proxima.monto)}</strong>
+          </div>` : ''}`;
+        content.appendChild(card);
+        // La línea de cuotas se desplaza a la próxima cuota pendiente
+        setTimeout(() => {
+          const sc = card.querySelector('.prest-cuotas');
+          const idx = proxima ? proxima.num - 1 : tabla.length - 1;
+          if (sc && sc.children[idx]) sc.scrollLeft = Math.max(0, sc.children[idx].offsetLeft - sc.offsetLeft - 80);
+        }, 0);
 
         // Botones acción
         const btns = document.createElement('div');
@@ -1810,10 +2208,24 @@ const Modal = {
 
         if (p.estado === 'activo') {
           const btnPago = document.createElement('button');
-          btnPago.className = 'btn btn-primary btn-sm';
-          btnPago.innerHTML = '<i class="ti ti-plus"></i> Registrar pago';
-          btnPago.onclick = () => App.navigate('registrarPago', p.id);
+          btnPago.className = 'btn btn-success btn-sm';
+          btnPago.style.flex = '1.4';
+          btnPago.innerHTML = '<i class="ti ti-check"></i> Cobrar';
+          btnPago.onclick = () => CobroRapido.abrir(p.id);
           btns.appendChild(btnPago);
+          if (cliente.telefono) {
+            const btnWa = document.createElement('button');
+            btnWa.className = 'btn btn-secondary btn-sm';
+            btnWa.style.flex = '0 0 44px';
+            btnWa.setAttribute('aria-label', 'Recordar por WhatsApp');
+            btnWa.innerHTML = '<i class="ti ti-brand-whatsapp" style="font-size:18px;color:#128C4B"></i>';
+            btnWa.onclick = () => {
+              const pend = tabla.filter(t => t.estado === 'vencido');
+              const cuotas = pend.length ? pend : (proxima ? [proxima] : []);
+              if (cuotas.length) Mensajes.abrirWhatsApp(cliente.telefono, Mensajes.recordatorio(cliente, p, cuotas, penalPendiente));
+            };
+            btns.appendChild(btnWa);
+          }
         }
 
         const btnTabla = document.createElement('button');
@@ -1877,7 +2289,7 @@ const Modal = {
             btnRecibo.style.cssText = 'background:none;border:none;cursor:pointer;padding:4px';
             btnRecibo.title = 'Ver comprobante';
             btnRecibo.innerHTML = '<i class="ti ti-receipt" style="font-size:16px;color:var(--navy)"></i>';
-            btnRecibo.onclick = () => PDF.generarRecibo(pg, p, cliente);
+            btnRecibo.onclick = () => ReciboCompartir.abrir([pg], p.id);
 
             row.appendChild(dot);
             row.appendChild(info);
@@ -2594,7 +3006,7 @@ const Modal = {
         App.navigate('clienteDetalle', clienteId, { replace: true });
       } catch(e) {
         console.error(e);
-        Toast.error('Error al guardar. Intenta de nuevo.');
+        Toast.error(navigator.onLine === false ? 'Se necesita internet para crear un préstamo' : 'Error al guardar. Intenta de nuevo.');
         saveBtn.disabled = false;
         saveBtn.innerHTML = '<i class="ti ti-cash"></i> Registrar préstamo';
       }
@@ -2719,7 +3131,7 @@ const Modal = {
     const toggle = document.createElement('div');
     toggle.className = 'toggle-wrap';
     toggle.innerHTML = `
-      <span class="toggle-label"><i class="ti ti-brand-whatsapp" style="font-size:16px;vertical-align:-3px;color:#25D366"></i> Notificar al cliente por WhatsApp</span>
+      <span class="toggle-label"><i class="ti ti-brand-whatsapp" style="font-size:16px;vertical-align:-3px;color:#25D366"></i> Enviar recibo al cliente al terminar</span>
       <button class="toggle on" id="notif-toggle"><div class="toggle-thumb"></div></button>`;
     body.appendChild(toggle);
 
@@ -2832,43 +3244,19 @@ const Modal = {
       saveBtn.disabled = true;
       saveBtn.innerHTML = '<i class="ti ti-loader"></i> Guardando...';
 
-      // La ventana de WhatsApp se abre antes de esperar a Firebase para que el navegador no la bloquee
-      const wa = notifWhatsApp && cliente.telefono ? window.open('', '_blank') : null;
-
       try {
         const nuevos = await Store.registrarPagos(prestamoId, r.cuotas.map(c => c.num), {
           fecha: r.fecha, metodo, folio, nota,
           comprobanteUrl: comprobanteDataUrl,
           condonarPenalizacion: condonar,
         });
-        const nuevoSaldo = Math.max(0, Math.round((saldo - r.sumaCuotas) * 100) / 100);
-        Toast.success(nuevos.length > 1 ? nuevos.length + ' cuotas registradas' : 'Pago registrado correctamente');
-
-        if (wa) {
-          const nombre = String(cliente.nombre).split(' ')[0];
-          const cuotasTxt = nuevos.length === 1
-            ? 'Cuota ' + nuevos[0].numCuota + ' de ' + prestamo.plazo
-            : 'Cuotas ' + nuevos[0].numCuota + ' a ' + nuevos[nuevos.length - 1].numCuota + ' de ' + prestamo.plazo;
-          const penal = condonar ? 0 : r.sumaPenal;
-          const saldoTexto = nuevoSaldo > 0
-            ? 'Tu saldo restante es de *' + Fmt.currency(nuevoSaldo) + '*.'
-            : '✅ *¡Felicidades! Tu préstamo ha sido liquidado en su totalidad.* Muchas gracias.';
-          const msg = 'Hola *' + nombre + '* 👋\n\nTe confirmamos tu pago recibido 🪙\n\n'
-            + '✅ *Monto:* ' + Fmt.currency(r.sumaCuotas + penal) + '\n'
-            + '🧾 *Concepto:* ' + cuotasTxt + '\n'
-            + (penal > 0 ? '⚠️ *Incluye penalización por atraso:* ' + Fmt.currency(penal) + '\n' : '')
-            + '📅 *Fecha:* ' + Fmt.date(r.fecha) + '\n'
-            + '💳 *Método:* ' + Fmt.metodoLabel(metodo) + (folio ? '\nReferencia: ' + folio : '') + '\n\n'
-            + saldoTexto + '\n\n'
-            + 'Cualquier duda, con gusto te atendemos 😊\n\n'
-            + '*Varito* · Tu dinerito, siempre a la mano';
-          wa.location.href = 'https://wa.me/52' + String(cliente.telefono).replace(/\D/g, '') + '?text=' + encodeURIComponent(msg);
-        }
-
+        if (navigator.vibrate) navigator.vibrate(30);
+        Toast.success(nuevos.length > 1 ? nuevos.length + ' cuotas registradas' : 'Pago registrado');
         App.navigate('clienteDetalle', prestamo.clienteId, { replace: true });
+        // Al terminar, ofrece mandar el recibo como imagen por WhatsApp
+        if (notifWhatsApp) ReciboCompartir.abrir(nuevos, prestamoId, { nuevo: true });
       } catch (err) {
         console.error(err);
-        if (wa) wa.close();
         Toast.error('Error al guardar. Intenta de nuevo.');
         saveBtn.disabled = false;
         saveBtn.innerHTML = '<i class="ti ti-check"></i> Confirmar y guardar pago';
@@ -3392,7 +3780,7 @@ const Modal = {
           } catch(e) {
             console.error(e);
             if (wa) wa.close();
-            Toast.error('Error al autorizar. Intenta de nuevo.');
+            Toast.error(navigator.onLine === false ? 'Se necesita internet para autorizar' : 'Error al autorizar. Intenta de nuevo.');
             btnAutorizar.disabled = false;
             btnAutorizar.innerHTML = '<i class="ti ti-check"></i> Autorizar';
           }
@@ -3764,6 +4152,14 @@ const Modal = {
     const view = document.createElement('div');
     view.id = 'view';
     view.style.cssText = 'flex:1;display:flex;flex-direction:column;';
+    const off = document.createElement('div');
+    off.className = 'offline-bar';
+    off.innerHTML = '<i class="ti ti-wifi-off"></i> Sin conexión · tus cambios se guardan y se suben al reconectar';
+    const estadoRed = () => { off.style.display = navigator.onLine === false ? 'block' : 'none'; };
+    window.addEventListener('online', estadoRed);
+    window.addEventListener('offline', estadoRed);
+    estadoRed();
+    shell.appendChild(off);
     shell.appendChild(view);
 
     const tabBar = document.createElement('div');
@@ -3771,7 +4167,7 @@ const Modal = {
     tabBar.id = 'tab-bar';
     tabBar.innerHTML = `
       <button class="tab active" data-r="dashboard">
-        <i class="ti ti-home tab-icon"></i><span class="tab-lbl">Inicio</span>
+        <i class="ti ti-calendar-event tab-icon"></i><span class="tab-lbl">Hoy</span>
       </button>
       <button class="tab" data-r="clientes">
         <i class="ti ti-users tab-icon"></i><span class="tab-lbl">Clientes</span>
@@ -3801,6 +4197,7 @@ const Modal = {
       window.scrollTo(0, 0);
     });
 
+    Instalar.init();
     Store.subscribe(() => App.onDatos());
     Store.init();
     this.renderView();
